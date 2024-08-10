@@ -5,6 +5,7 @@
     <title>CS 4600 - Project Interactive Graphics</title>
     <script type="text/javascript" id="includedscript" src="project.js"></script>
     <script type="text/javascript" src="obj.js"></script>
+    <script type="text/javascript" src="water.js"></script>
     
     <script type="text/javascript">
     ///////////////////////////////////////////////////////////////////////////////////
@@ -156,6 +157,12 @@
     var canvas, gl;
     var rotX=0, rotY=0, transY=0, transZ=3;
     var MV, MVP; // view matrices
+    //var particle;
+    var shaderProgram;
+    var vertexPositionAttribute;
+    var uMVMatrix;
+    var uPMatrix;
+    
     
     // Called once to initialize
     function InitWebGL()
@@ -168,6 +175,10 @@
             alert("Unable to initialize WebGL. Your browser or machine may not support it.");
             return;
         }
+
+      //  shaderProgram = createShaderProgram();
+
+      //  vertexPositionAttribute = gl.getAttribLocation(shaderProgram, )
         
         // Initialize settings
         gl.clearColor(0,0,0,0);
@@ -177,9 +188,108 @@
         boxDrawer   = new BoxDrawer();
         pointDrawer = new PointDrawer();
         meshDrawer  = new MeshDrawer();
-        
+
         // Set the viewport size
         UpdateCanvasSize();
+    }
+    ////////////////////////
+    var shaderVs = `
+        attribute vec3 aVertexPosition;
+
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix; 
+
+        void main()
+        {
+            gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+            gl_PointSize = 5.0; // Point dimension
+        }
+    `;
+
+
+
+    var shaderFs = `
+        precision mediump float;
+        void main()
+        {
+            gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0); //Blue color
+        }
+    `;
+
+
+    ////////////////////////
+
+    function initShaders() {
+        shaderProgram = gl.createProgram();
+    
+       // var fragmentShader = getShader(gl, "shaderFs");
+        //var vertexShader = getShader(gl, "shaderVs");
+        var vertexShader = CompileShader(gl.VERTEX_SHADER, shaderVs);
+        var fragmentShader = CompileShader(gl.FRAGMENT_SHADER, shaderFs);
+
+        if (!vertexShader || !fragmentShader) {
+            console.error("Shader compilation failed");
+            return null;
+        }
+
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        const programLinkLog = gl.getProgramInfoLog(shaderProgram);
+        console.log(programLinkLog);
+
+        if(!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)){
+            alert("Could not initialize shaders for water particles");
+            return null;
+        }
+
+        gl.useProgram(shaderProgram);
+
+        vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(vertexPositionAttribute);
+
+        uMVMatrix = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        uPMatrix = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        
+    }
+
+    function getShader(gl, id){
+        var shaderScript = document.getElementById(id);
+        if(!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader; 
+        if (shaderScript.type == "x-shader/x-fragment") {
+        shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        const shaderCompileLog = gl.getShaderInfoLog(shader);
+        console.log("SHADER COMPILER LOG:" + shaderCompileLog);
+
+        return shader;
     }
     
     // Called every time the window size is changed.
@@ -220,14 +330,24 @@
         var perspectiveMatrix = ProjectionMatrix( canvas, transZ );
         MV  = GetModelViewMatrix( 0, transY, transZ, rotX, rotY );
         MVP = MatrixMult( perspectiveMatrix, MV );
+    }    
+
+    function initBuffers() {
+        particleBuffer = gl.createBuffer(); 
+        gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
     }
-    
+
     // This is the main function that handled WebGL drawing
     function DrawScene()
     {
         // Clear the screen and the depth buffer.
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
         
+       /* mat4.perspective(pMatrix, 45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+        mat4.identity(mvMatrix);
+        mat4.translate(mvMatrix, mvMatrix, [0.0, 0.0, -5.0]); */
+
+
         // Draw the curve and then the line segments that connect the control points.
         var nrmTrans = [ MV[0],MV[1],MV[2], MV[4],MV[5],MV[6], MV[8],MV[9],MV[10] ];
         meshDrawer.draw( MVP, MV, nrmTrans );
@@ -235,6 +355,94 @@
             boxDrawer.draw( MVP );
         }
         pointDrawer.draw( MVP );
+
+        drawParticles(); //TODO: TOGLIERE SOLO ALLA FINE ==> PIU IMPORTANTE DI TUTTI
+    }
+
+    var particleSystem;
+    var particles;
+
+    function identityMatrix4x4() {
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        ];
+    }
+
+    function multiplyMatrix4x4(a, b) {
+        const result = [];
+
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 4; j++) {
+                result[i * 4 + j] = 
+                    a[i * 4 + 0] * b[0 * 4 + j] + 
+                    a[i * 4 + 1] * b[1 * 4 + j] + 
+                    a[i * 4 + 2] * b[2 * 4 + j] + 
+                    a[i * 4 + 3] * b[3 * 4 + j];
+            }
+        }
+        return result;
+    }
+
+    function translateMatrix4x4(m, tx, ty, tz) {
+        const translation = identityMatrix4x4();
+        translation[12] = tx;
+        translation[13] = ty;
+        translation[14] = tz;
+
+        return multiplyMatrix4x4(m, translation);
+}
+
+    function drawParticles() {
+        particleSystem = new Particle();
+        particles = particleSystem.particles; // vedere se metterlo dopo perche particleSystem è un Particle() definito sotto
+       // this.particleBuffer = gl.createBuffer();
+        gl.useProgram(shaderProgram);
+        //gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
+        this.particleData = [];
+
+        //console.log(particleSystem);  // Dovrebbe mostrare l'oggetto a cui 'particles' appartiene
+        //console.log(particleSystem.particles); 
+        //if (typeof particleSystem === 'undefined' || typeof particleSystem.particles === 'undefined') {
+         //  alert("Particle system or particles are not defined.");
+        //return;
+    //}
+        const PARTICLES_NUMBER = 100; //TODO: inizializzare particles ; Poiche vale 0 
+    
+        for (let i = 0; i < PARTICLES_NUMBER; i++) {
+            let position = [
+                Math.random() * 2 - 1,
+                Math.random() * 2 - 1,
+                Math.random() * 2 - 1
+            ];
+            let velocity = [0, 0, 0];
+            particleSystem.addParticle(position, velocity);
+        }
+
+        for (let i = 0; i < particles.length; i++) {
+            const particle = particles[i];
+            particleData.push(...particle.position);
+           // gl.begin(gl.POINTS);
+            //gl.vertex3f(particle.position[0], particle.position[1], particle.position[2]); //TODO: Vederlo
+            //gl.end();
+        }
+
+        //TODO: Veder se fare il createBuffer qui dentro
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.particleData), gl.STATIC_DRAW);
+        gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(vertexPositionAttribute);
+
+        //let mvMatrix = mat4.create();
+        //let pMatrix = mat4.create();
+        var mvMatrix = identityMatrix4x4();
+        var pMatrix = identityMatrix4x4();
+        
+        gl.uniformMatrix4fv(uMVMatrix, false, mvMatrix); //TODO: creare in qualche modo la variabile mvMatrix
+        gl.uniformMatrix4fv(uPMatrix, false, pMatrix); //TODO: stesa cosa di mvMatrix 
+
+        gl.drawArrays(gl.POINTS, 0, particles.length);
     }
     
     // This is a helper function for compiling the given vertex and fragment shader source code into a program.
@@ -585,7 +793,9 @@
         {
             this.mesh = new ObjMesh;
             this.mesh.parse( objdef );
+            //this.particle = new Particle(0, 0, 0);
             var box = this.mesh.getBoundingBox();
+        //    var particleBox = this.particle.getBoundingBox(); Problem
             var shift = [
                 -(box.min[0]+box.max[0])/2,
                 -(box.min[1]+box.max[1])/2,
@@ -816,11 +1026,31 @@
     ///////////////////////////////////////////////////////////////////////////////////
     
     var showBox;
+
+    var particleSystem;
     
     window.onload = function() {
         showBox = document.getElementById('show-box');
         InitWebGL();
+        initShaders(); //TODO: crea problemi
+        initBuffers();
         lightView = new LightView();
+
+
+        particleSystem = new Particle();
+
+        //I want to create some particle in the bounding box
+
+        for (let i = 0; i < 100; i++) {
+            let position = [
+                Math.random() * 2 - 1,
+                Math.random() * 2 - 1,
+                Math.random() * 2 - 1
+            ];
+            let velocity = [0, 0, 0];
+            particleSystem.addParticle(position, velocity);
+        }
+
         canvas.zoom = function( s ) {
             transZ *= s/canvas.height + 1;
             UpdateViewMatrices();
@@ -879,9 +1109,20 @@
         SetMass     ( document.getElementById('mass') );
         SetStiffness( document.getElementById('stiffness') );
         SetShininess( document.getElementById('shininess-exp') );
-    
+        
+        
+
         DrawScene();
+
+        setInterval(updateSimulation, 20);
     };
+
+    function updateSimulation() {
+        particleSystem.step();
+        DrawScene();
+    }
+
+
     function WindowResize()
     {
         UpdateCanvasSize();
@@ -974,6 +1215,14 @@
         document.getElementById('shininess-value').innerText = s.toFixed( s < 10 ? 2 : 0 );
         meshDrawer.setShininess(s);
         DrawScene();
+    }
+
+    function SetParticle( param ) {
+        var p = param.value;
+        var s = p / 5;
+        document.getElementById('water-particle-value').innerText = s.toFixed( 2 );
+        //TODO: Continue this function when I've implement all water logic
+        //massSpring.setWaterParticleSize(s);
     }
     
     ///////////////////////////////////////////////////////////////////////////////////
@@ -1156,6 +1405,7 @@
     <div class="control"><span id="mass-label">Mass:</span><span class="value" id="mass-value">1</span><input id="mass" type="range" min="1" max="100" value="20" oninput="SetMass(this)" ondblclick="this.value=20;this.oninput()"/></div>
     <div class="control"><span id="stiffness-label">Stiffness:</span><span class="value" id="stiffness-value">1</span><input id="stiffness" type="range" min="0" max="100" value="20" oninput="SetStiffness(this)" ondblclick="this.value=20;this.oninput()"/></div>
     <div class="control"><span id="damping-label">Damping:</span><span class="value" id="damping-value">1.00</span><input id="damping" type="range" min="0" max="100" value="20" oninput="SetDamping(this)" ondblclick="this.value=20;this.oninput()"/></div>
+    <div class="control"><span id="water-particle-label">Water Particle:</span><span class="value" id="water-particle-value">10.00</span><input id="particle" type="range" min="0" max="100" value="50" oninput="SetParticle(this)" ondblclick="this.value=50;this.oninput()"/></div>
     </div>
     <div class="control-group">
     <div class="control"><input id="show-box" name="show-box" type="checkbox" onchange="DrawScene()" checked /><label for="show-box"> Show Box</label></div>

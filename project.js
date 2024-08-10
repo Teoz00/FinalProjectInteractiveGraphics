@@ -267,9 +267,6 @@ function SimTimeStep( dt, positions, velocities, springs, stiffness, damping, pa
 	var numParticles = positions.length;
 	//var forces = Array(position.lenght); //the total for per particle 
     var forces = Array(numParticles).fill(null).map(() => new Vec3(0, 0, 0));
-	//TODO : Compute the total force of each particle OK 
-	//TODO: update positions and velocities OK
-	//TODO: handle collision OK
 
     //spring forces
     for (var i = 0; i < springs.length; i++) {
