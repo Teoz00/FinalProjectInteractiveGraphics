@@ -150,70 +150,47 @@
         ////////////////////////////////////
         //WaterDrawer
         ///////////////////////////////////
-        class WaterDrawer {
-            constructor() {
-            // Compile the shader program
-            this.prog = InitShaderProgram( waterVS, waterFS );
-            
-            // Get the ids of the uniform variables in the shaders
-            this.mvp = gl.getUniformLocation( this.prog, 'mvp' );
-    
-            // Get the ids of the vertex attributes in the shaders
-            this.vertPos = gl.getAttribLocation( this.prog, 'pos' );
-            
-            // Create the buffer objects
+    class WaterDrawer {
+        constructor() {
+            this.prog = InitShaderProgram(waterVS, waterFS);
+            this.mvp = gl.getUniformLocation(this.prog, 'mvp');
+            this.vertPos = gl.getAttribLocation(this.prog, 'pos');
             this.vertbuffer = gl.createBuffer();
+            this.particles = []; // Array per memorizzare le particelle
+        }
 
-            this.points = [];
+        addPoint(p) {
+            this.particles.push(p);
+            this.updateParticles();
+        }
+
+        clearParticles() {
+            this.particles = [];
+            this.updateParticles();
+        }
+
+        updateParticles() {
+            let pos = [];
+            for (let p of this.particles) {
+                pos.push(p.x, p.y, p.z);
             }
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+        }
 
-            addPoint(p) {
-                this.points.push(p);
-                this.updatePoints();
-            }
-
-           /* setPoint(p)
-            {
-                if ( this.selVertex == p ) return false;
-                this.selVertex = p;
-                this.updatePoint();
-                return true;
-            }*/
-
-            updatePoints()
-            {
-                if (this.points.length > 0) {
-                    let flattenedPoints = [];
-                    for (let i = 0; i < this.points.length; i++) {
-                        flattenedPoints.push(this.points[i].x, this.points[i].y, this.points[i].z);
-                    }
-                
-                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
-                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(flattenedPoints), gl.STATIC_DRAW);     
-                }
-
-
-              /*  if ( this.selVertex !== undefined ) {
-                    var pos = [ this.selVertex.x, this.selVertex.y, this.selVertex.z ];
-                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
-                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
-                }*/
-            }
-            draw(trans)
-            {
-                if ( this.points.length  > 0) {
-                    gl.useProgram( this.prog );
-                    gl.uniformMatrix4fv( this.mvp, false, trans );
-                    gl.bindBuffer( gl.ARRAY_BUFFER, this.vertbuffer );
-                    gl.vertexAttribPointer( this.vertPos, 3, gl.FLOAT, false, 0, 0 );
-                    gl.enableVertexAttribArray( this.vertPos );
-                    gl.disable(gl.DEPTH_TEST);
-                    //gl.drawArrays( gl.POINTS, 0, 1 );
-                    gl.drawArrays(gl.POINTS, 0, this.points.length);
-                    gl.enable(gl.DEPTH_TEST);
-                }
+        draw(trans) {
+            if (this.particles.length > 0) {
+                gl.useProgram(this.prog);
+                gl.uniformMatrix4fv(this.mvp, false, trans);
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
+                gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(this.vertPos);
+                gl.disable(gl.DEPTH_TEST);
+                gl.drawArrays(gl.POINTS, 0, this.particles.length);
+                gl.enable(gl.DEPTH_TEST);
             }
         }
+    }
 
         var waterVS = `
             attribute vec3 pos;
@@ -274,7 +251,8 @@
 
         //waterDrawer.addPoint({x: 0, y: 0, z: 0})
         
-        const PARTICLES = 10000; 
+        //INIT PARTICLES
+        const PARTICLES = 5000; 
         for (let i = 0; i < PARTICLES; i++) {
             let x = -1 + Math.random() * 2;  // x tra -1 e 1
             let y = -1.5 + Math.random();      // y tra -1 e 0
@@ -1092,6 +1070,43 @@
         meshDrawer.setShininess(s);
         DrawScene();
     }
+
+   /* function SetParticle( param ) {
+           
+        var p = param.value;
+        var s = Math.round(p / 2);  // Arrotonda il risultato a un intero
+        document.getElementById('water-particle-value').innerText = s;
+        //TODO: Continue this function when I've implement all water logic
+        //massSpring.setWaterParticleSize(s);
+    } */
+
+    var particles = 1000; // Valore iniziale predefinito
+
+    function SetParticle(param) {
+        var p = param.value;
+        particles = Math.round(p / 2);  // Arrotonda a intero
+
+        document.getElementById('water-particle-value').innerText = particles;
+
+        // Rigenera le particelle con il nuovo valore di particles
+        GenerateParticles();
+    }
+
+    function GenerateParticles() {
+        waterDrawer.clearParticles(); // Pulisce le particelle esistenti (dovrai implementare questo metodo)
+
+        for (let i = 0; i < particles; i++) {
+            let x = -1 + Math.random() * 2;   // x tra -1 e 1
+            let y = -1.5 + Math.random();     // y tra -1.5 e -0.5
+            let z = -1 + Math.random() * 2;   // z tra -1 e 1
+            
+            // Filtra le particelle che escono dai limiti del cubo
+            if (y >= -1 && y <= 1) { 
+                waterDrawer.addPoint({x: x, y: y, z: z});
+            }
+        }
+    }
+
     
     ///////////////////////////////////////////////////////////////////////////////////
     </script>
@@ -1281,6 +1296,7 @@
     <div class="control">OBJ model:<br/><input id="obj" type="file" onchange="LoadObj(this)" accept=".obj"/></div>
     <div class="control">Texture image:<br/><input id="texture" type="file" onchange="LoadTexture(this)" accept="image/*"/></div>
     <div class="control"><img id="texture-img" /></div>
+    <div class="control"><span id="water-particle-label">Water Particle:</span><span class="value" id="water-particle-value">10000</span><input id="waterParticle" type="range" min="0" max="40000" value="1000" oninput="SetParticle(this)" ondblclick="this.value=10000;this.oninput()"/></div>
     </div>
     </div>
     </div>
