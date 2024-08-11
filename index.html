@@ -5,7 +5,7 @@
     <title>CS 4600 - Project Interactive Graphics</title>
     <script type="text/javascript" id="includedscript" src="project.js"></script>
     <script type="text/javascript" src="obj.js"></script>
-    
+    <script type="text/javascript" src="waterParticle.js"></script>
     <script type="text/javascript">
     ///////////////////////////////////////////////////////////////////////////////////
     // Below is the code for the object that draws lines.
@@ -145,6 +145,98 @@
     `;
     ///////////////////////////////////////////////////////////////////////////////////
     </script>
+
+    <script type="text/javascript">
+        ////////////////////////////////////
+        //WaterDrawer
+        ///////////////////////////////////
+        class WaterDrawer {
+            constructor() {
+            // Compile the shader program
+            this.prog = InitShaderProgram( waterVS, waterFS );
+            
+            // Get the ids of the uniform variables in the shaders
+            this.mvp = gl.getUniformLocation( this.prog, 'mvp' );
+    
+            // Get the ids of the vertex attributes in the shaders
+            this.vertPos = gl.getAttribLocation( this.prog, 'pos' );
+            
+            // Create the buffer objects
+            this.vertbuffer = gl.createBuffer();
+
+            this.points = [];
+            }
+
+            addPoint(p) {
+                this.points.push(p);
+                this.updatePoints();
+            }
+
+           /* setPoint(p)
+            {
+                if ( this.selVertex == p ) return false;
+                this.selVertex = p;
+                this.updatePoint();
+                return true;
+            }*/
+
+            updatePoints()
+            {
+                if (this.points.length > 0) {
+                    let flattenedPoints = [];
+                    for (let i = 0; i < this.points.length; i++) {
+                        flattenedPoints.push(this.points[i].x, this.points[i].y, this.points[i].z);
+                    }
+                
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(flattenedPoints), gl.STATIC_DRAW);     
+                }
+
+
+              /*  if ( this.selVertex !== undefined ) {
+                    var pos = [ this.selVertex.x, this.selVertex.y, this.selVertex.z ];
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+                }*/
+            }
+            draw(trans)
+            {
+                if ( this.points.length  > 0) {
+                    gl.useProgram( this.prog );
+                    gl.uniformMatrix4fv( this.mvp, false, trans );
+                    gl.bindBuffer( gl.ARRAY_BUFFER, this.vertbuffer );
+                    gl.vertexAttribPointer( this.vertPos, 3, gl.FLOAT, false, 0, 0 );
+                    gl.enableVertexAttribArray( this.vertPos );
+                    gl.disable(gl.DEPTH_TEST);
+                    //gl.drawArrays( gl.POINTS, 0, 1 );
+                    gl.drawArrays(gl.POINTS, 0, this.points.length);
+                    gl.enable(gl.DEPTH_TEST);
+                }
+            }
+        }
+
+        var waterVS = `
+            attribute vec3 pos;
+
+            uniform mat4 mvp;
+            //uniform mat4 uPMatrix; 
+
+            void main()
+            {
+                //gl_Position = uPMatrix * mvp * vec4(pos, 1.0); //Con in piu uPMatrix
+                gl_Position = mvp * vec4(pos, 1.0);
+                gl_PointSize = 5.0; // Point dimension
+            }
+        `;
+
+        var waterFS = `
+            precision mediump float;
+            void main()
+            {
+                gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0); //Blue color
+            }
+        `;
+    </script>
     
     <script type="text/javascript">
     ///////////////////////////////////////////////////////////////////////////////////
@@ -153,6 +245,7 @@
     var boxDrawer;
     var pointDrawer;
     var meshDrawer;
+    var waterDrawer;
     var canvas, gl;
     var rotX=0, rotY=0, transY=0, transZ=3;
     var MV, MVP; // view matrices
@@ -177,6 +270,21 @@
         boxDrawer   = new BoxDrawer();
         pointDrawer = new PointDrawer();
         meshDrawer  = new MeshDrawer();
+        waterDrawer = new WaterDrawer();
+
+        //waterDrawer.addPoint({x: 0, y: 0, z: 0})
+        
+        const PARTICLES = 10000; 
+        for (let i = 0; i < PARTICLES; i++) {
+            let x = -1 + Math.random() * 2;  // x tra -1 e 1
+            let y = -1.5 + Math.random();      // y tra -1 e 0
+            let z = -1 + Math.random() * 2;  // z tra -1 e 1
+            
+            if (y >= -1 && y <= 1) { 
+                waterDrawer.addPoint({x: x, y: y, z: z});
+            }
+        }
+
         
         // Set the viewport size
         UpdateCanvasSize();
@@ -235,6 +343,8 @@
             boxDrawer.draw( MVP );
         }
         pointDrawer.draw( MVP );
+        
+        waterDrawer.draw(MVP);
     }
     
     // This is a helper function for compiling the given vertex and fragment shader source code into a program.
@@ -684,6 +794,8 @@
             meshDrawer.setMesh( this.buffers.positionBuffer, this.buffers.texCoordBuffer, this.buffers.normalBuffer );
     
             pointDrawer.updatePoint();
+
+            waterDrawer.updatePoints();
             DrawScene();
         }
     
@@ -753,6 +865,11 @@
                 DrawScene();
                 canvas.className = selPt ? "sel" : "";
             }
+
+          /*  if ( waterDrawer.setPoint( selPt ) ) {
+                DrawScene();
+                canvas.className = selPt ? "sel" : "";
+            } */
         }
         
         mouseDown()
