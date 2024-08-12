@@ -150,14 +150,31 @@
         ////////////////////////////////////
         //WaterDrawer and Sphere rendering ----> Switching to sphere instead of points, better develope
         ///////////////////////////////////
+
+    class Particle {
+        constructor(x, y, z) {
+            this.position = [x, y, z];
+            this.velocity = [0, 0, 0];
+            this.force = [0, 0, 0];
+            this.density = 0;
+            this.pressure = 0;
+        }
+    }
+
     class WaterDrawer {
         constructor() {
             this.prog = InitShaderProgram(waterVS, waterFS);
             this.mvp = gl.getUniformLocation(this.prog, 'mvp');
             this.vertPos = gl.getAttribLocation(this.prog, 'pos');
-            this.particles = []; // Array per memorizzare le particelle
+            this.particles = []; // Array per memorizzare le particelle ---- Inoltre tiene conto anche delle posizioni x y z 
 
             this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
+
+            ///TODO: Qui tratto la parte fisica, vedere se farla qui dentro o meno
+            /*this.velocity = { x: 0, y: 0, z: 0 };
+            this.force = { x: 0, y: 0, z: 0 };
+            this.density = 0;
+            this.pressure = 0;*/
         }
 
         addPoint(p) {
@@ -262,6 +279,19 @@
             gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0); // Colore blu per le particelle d'acqua
         }
     `;
+
+///////////////////////CONSTANT VALUE/////////////////////////////////////// --> Somo inspiegabilmente gia presenti
+    const H = 0.1;               // Raggio di influenza (kernel support radius)
+    const MASS = 0.02;           // Massa di ogni particella
+    const REST_DENSITY = 1000;   // Densità di riposo del fluido
+    const GAS_CONST = 2000;      // Costante del gas per la pressione
+    const VISCOSITY = 0.1;       // Viscosità del fluido
+    const TIME_STEP = 0.01;      // Passo temporale per l'integrazione
+
+    const GRAVITY = [0, -9.81, 0]; // Accelerazione di gravità
+
+////////////////////////////////////////////////////////////////////////////
+
 ///////////////////////HELPER FUNCTION FOR ME //////////////////////////////
     function MatrixScale(sx, sy, sz) {
         return [
@@ -862,7 +892,7 @@
     
             pointDrawer.updatePoint();
 
-            waterDrawer.updatePoints();
+            waterDrawer.updateParticles();
             DrawScene();
         }
     
@@ -933,10 +963,6 @@
                 canvas.className = selPt ? "sel" : "";
             }
 
-          /*  if ( waterDrawer.setPoint( selPt ) ) {
-                DrawScene();
-                canvas.className = selPt ? "sel" : "";
-            } */
         }
         
         mouseDown()
