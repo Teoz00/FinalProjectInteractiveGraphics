@@ -169,32 +169,27 @@
             this.particles = []; // Array per memorizzare le particelle ---- Inoltre tiene conto anche delle posizioni x y z 
 
             this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
-
-            ///TODO: Qui tratto la parte fisica, vedere se farla qui dentro o meno
-            /*this.velocity = { x: 0, y: 0, z: 0 };
-            this.force = { x: 0, y: 0, z: 0 };
-            this.density = 0;
-            this.pressure = 0;*/
         }
 
         addPoint(p) {
-            this.particles.push(p);
-            this.updateParticles();
+            var part = new Particle(p.x, p.y, p.z);
+            this.particles.push(part);
+         //   this.updateParticles();
         }
 
         clearParticles() {
             this.particles = [];
-            this.updateParticles();
+          //  this.updateParticles();
         }
 
-        updateParticles() {
-            let pos = [];
-            for (let p of this.particles) {
-                pos.push(p.x, p.y, p.z);
-            }
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
+      //  updateParticles() {
+          //  let pos = [];
+          //  for (let p of this.particles) {
+          //      pos.push(p.x, p.y, p.z);
+          //  }
+           // gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
            // gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); //TODO: fare il check poichè dava errori
-        }
+      //  }
 
         createSphereGeometry(latBands, longBands) {
             this.vertexData = [];
@@ -252,7 +247,7 @@
 
                 for (let i = 0; i < this.particles.length; i++) {
                     const p = this.particles[i];
-                    const modelTrans = MatrixTranslate(p.x, p.y, p.z);
+                    const modelTrans = MatrixTranslate(p.position[0], p.position[1], p.position[2]); //Here I take the Particles(x,y,z), so here I'm using the object Particle
                     const modelScale = MatrixScale(scaleFactor, scaleFactor, scaleFactor);
                     const modelViewProjection = MatrixMult(trans, MatrixMult(modelTrans, modelScale));
 
@@ -261,6 +256,107 @@
                 }
             }
         }
+
+        // Metodo per calcolare la densità e la pressione
+        computeDensityPressure() {
+            for (let i = 0; i < this.particles.length; i++) {
+                let pi = this.particles[i];
+                pi.density = 0;
+                for (let j = 0; j < this.particles.length; j++) {
+                    let pj = this.particles[j];
+                    let r2 = this.squaredDistance(pi.position, pj.position);
+                    if (r2 < H * H) {
+                        pi.density += MASS * this.poly6Kernel(r2);
+                    }
+                }
+                pi.pressure = GAS_CONST * (pi.density - REST_DENSITY);
+            }
+        }
+
+        // Metodo per calcolare le forze
+        computeForces() {
+            for (let i = 0; i < this.particles.length; i++) {
+                let pi = this.particles[i];
+                pi.force = [0, 0, 0];
+                for (let j = 0; j < this.particles.length; j++) {
+                    if (i !== j) {
+                        let pj = this.particles[j];
+                        let r2 = this.squaredDistance(pi.position, pj.position);
+                        if (r2 < H * H) {
+                            let r = Math.sqrt(r2);
+
+                            // Forza di pressione
+                            let pressureForce = this.pressureKernelGradient(pi, pj, r);
+                            pi.force[0] -= pressureForce[0];
+                            pi.force[1] -= pressureForce[1];
+                            pi.force[2] -= pressureForce[2];
+
+                            // Forza di viscosità
+                            let viscosityForce = this.viscosityKernelLaplacian(pi, pj, r);
+                            pi.force[0] += viscosityForce[0];
+                            pi.force[1] += viscosityForce[1];
+                            pi.force[2] += viscosityForce[2];
+                        }
+                    }
+                }
+                // Aggiungere la forza di gravità
+                pi.force[1] += pi.density * GRAVITY[1];
+            }
+        }
+
+        // Metodo per aggiornare le posizioni delle particelle
+        integrate() {
+            for (let i = 0; i < this.particles.length; i++) {
+                let pi = this.particles[i];
+
+                pi.velocity[0] += (pi.force[0] / pi.density) * TIME_STEP;
+                pi.velocity[1] += (pi.force[1] / pi.density) * TIME_STEP;
+                pi.velocity[2] += (pi.force[2] / pi.density) * TIME_STEP;
+
+                pi.position[0] += pi.velocity[0] * TIME_STEP;
+                pi.position[1] += pi.velocity[1] * TIME_STEP;
+                pi.position[2] += pi.velocity[2] * TIME_STEP;
+            }
+        }
+
+        // Funzione helper per calcolare la distanza al quadrato
+        squaredDistance(a, b) {
+            return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+        }
+
+        // Kernel poly6
+        poly6Kernel(r2) {
+            let h2 = H * H;
+            return 315 / (64 * Math.PI * h2 ** 3) * (h2 - r2) ** 3;
+        }
+
+        // Kernel gradiente della pressione
+        pressureKernelGradient(pi, pj, r) {
+            let h2 = H * H;
+            let rVector = [
+                pi.position[0] - pj.position[0],
+                pi.position[1] - pj.position[1],
+                pi.position[2] - pj.position[2],
+            ];
+            let factor = -45 / (Math.PI * h2 ** 2) * (H - r);
+            return [
+                factor * rVector[0] * (pi.pressure + pj.pressure) / (2 * pj.density),
+                factor * rVector[1] * (pi.pressure + pj.pressure) / (2 * pj.density),
+                factor * rVector[2] * (pi.pressure + pj.pressure) / (2 * pj.density),
+            ];
+        }
+
+        // Kernel laplaciano della viscosità
+        viscosityKernelLaplacian(pi, pj, r) {
+            let h2 = H * H;
+            let factor = 45 / (Math.PI * h2 ** 2) * (H - r);
+            return [
+                VISCOSITY * (pj.velocity[0] - pi.velocity[0]) / pj.density * factor,
+                VISCOSITY * (pj.velocity[1] - pi.velocity[1]) / pj.density * factor,
+                VISCOSITY * (pj.velocity[2] - pi.velocity[2]) / pj.density * factor,
+            ];
+        }
+
     }
 
     var waterVS = `
@@ -311,15 +407,6 @@
         ];
     }
 
-    function MatrixScale(sx, sy, sz) {
-        return [
-            sx, 0,  0,  0,
-            0,  sy, 0,  0,
-            0,  0,  sz, 0,
-            0,  0,  0,  1
-        ];
-    }
-
     function MatrixMult(a, b) {
         var c = new Array(16).fill(0);
         for (var i = 0; i < 4; i++) {
@@ -367,8 +454,6 @@
         pointDrawer = new PointDrawer();
         meshDrawer  = new MeshDrawer();
         waterDrawer = new WaterDrawer();
-
-        //waterDrawer.addPoint({x: 0, y: 0, z: 0})
         
         //INIT PARTICLES
         const PARTICLES = 5000;  //TODO: Abbassato a 1000 perchè devo ottimizzares
@@ -553,6 +638,29 @@
         
         return r;
     }
+  //  mainLoop(); 
+
+/*
+
+  waterDrawer.computeDensityPressure();
+        waterDrawer.computeForces();
+        waterDrawer.integrate();
+       // waterDrawer.updateParticles();
+        waterDrawer.draw(MVP);  // Usare la matrice di trasformazione adeguata
+        DrawScene();
+    // Main loop
+    function renderLoop() {
+        waterDrawer.computeDensityPressure();
+        waterDrawer.computeForces();
+        waterDrawer.integrate();
+        waterDrawer.updateParticles();
+        waterDrawer.draw(MVP);  // Usare la matrice di trasformazione adeguata
+
+        requestAnimationFrame(renderLoop);
+    }
+
+    renderLoop();
+*/
     
     ///////////////////////////////////////////////////////////////////////////////////
     </script>
@@ -892,7 +1000,7 @@
     
             pointDrawer.updatePoint();
 
-            waterDrawer.updateParticles();
+           // waterDrawer.updateParticles();
             DrawScene();
         }
     
@@ -1185,15 +1293,6 @@
         meshDrawer.setShininess(s);
         DrawScene();
     }
-
-   /* function SetParticle( param ) {
-           
-        var p = param.value;
-        var s = Math.round(p / 2);  // Arrotonda il risultato a un intero
-        document.getElementById('water-particle-value').innerText = s;
-        //TODO: Continue this function when I've implement all water logic
-        //massSpring.setWaterParticleSize(s);
-    } */
 
     var particles = 1000; // Valore iniziale predefinito
 
