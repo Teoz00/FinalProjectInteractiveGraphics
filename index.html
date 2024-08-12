@@ -148,7 +148,7 @@
 
     <script type="text/javascript">
         ////////////////////////////////////
-        //WaterDrawer
+        //WaterDrawer and Sphere rendering ----> Switching to sphere instead of points, better develope
         ///////////////////////////////////
     class WaterDrawer {
         constructor() {
@@ -185,11 +185,66 @@
                 gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
                 gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
                 gl.enableVertexAttribArray(this.vertPos);
-                gl.disable(gl.DEPTH_TEST);
-                gl.drawArrays(gl.POINTS, 0, this.particles.length);
-                gl.enable(gl.DEPTH_TEST);
+                
+                //TODO: Here there is the render of each particle as a sphere (new implementation)
+
+                for(let i = 0; i < this.particles.length; i++) {
+                    const p = this.particles[i];
+                    this.drawSphere(p.x, p.y, p.z, 0.02); //Drawing
+                }
             }
         }
+
+        drawSphere(x, y, z, radius) {
+            const latBands = 30;
+            const longBands = 30;
+
+            let vertexData = [];
+            let indexData = [];
+
+            for (let lat = 0; lat <= latBands; lat++) {
+                const theta = lat * Math.PI / latBands;
+                const sinTheta = Math.sin(theta);
+                const cosTheta = Math.cos(theta);
+
+                for (let long = 0; long <= longBands; long++) {
+                    const phi = long * 2 * Math.PI / longBands;
+                    const sinPhi = Math.sin(phi);
+                    const cosPhi = Math.cos(phi);
+
+                    const xPos = cosPhi * sinTheta;
+                    const yPos = cosTheta;
+                    const zPos = sinPhi * sinTheta;
+
+                    vertexData.push(xPos * radius + x, yPos * radius + y, zPos * radius + z);
+                }
+            }
+
+            for (let lat = 0; lat < latBands; lat++) {
+                for (let long = 0; long < longBands; long++) {
+                    const first = (lat * (longBands + 1)) + long;
+                    const second = first + longBands + 1;
+
+                    indexData.push(first, second, first + 1);
+                    indexData.push(second, second + 1, first + 1);
+                }
+            }
+
+            const sphereBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, sphereBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+
+            const indexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, sphereBuffer);
+            gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(this.vertPos);
+
+            gl.drawElements(gl.TRIANGLES, indexData.length, gl.UNSIGNED_SHORT, 0);
+        }
+
     }
 
         var waterVS = `
