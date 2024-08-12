@@ -155,8 +155,9 @@
             this.prog = InitShaderProgram(waterVS, waterFS);
             this.mvp = gl.getUniformLocation(this.prog, 'mvp');
             this.vertPos = gl.getAttribLocation(this.prog, 'pos');
-            this.vertbuffer = gl.createBuffer();
             this.particles = []; // Array per memorizzare le particelle
+
+            this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
         }
 
         addPoint(p) {
@@ -175,33 +176,12 @@
                 pos.push(p.x, p.y, p.z);
             }
             gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+           // gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); //TODO: fare il check poichè dava errori
         }
 
-        draw(trans) {
-            if (this.particles.length > 0) {
-                gl.useProgram(this.prog);
-                gl.uniformMatrix4fv(this.mvp, false, trans);
-                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
-                gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
-                gl.enableVertexAttribArray(this.vertPos);
-                
-                //TODO: Here there is the render of each particle as a sphere (new implementation)
-
-                for(let i = 0; i < this.particles.length; i++) {
-                    const p = this.particles[i];
-                    this.drawSphere(p.x, p.y, p.z, 0.02); //Drawing
-                }
-            }
-        }
-
-        //TODO: Ottimizzare questa funzione, troppi for diventa esponenziale. Vedere se riesco a far fare meno chiamate webGL
-        drawSphere(x, y, z, radius) {
-            const latBands = 30;
-            const longBands = 30;
-
-            let vertexData = [];
-            let indexData = [];
+        createSphereGeometry(latBands, longBands) {
+            this.vertexData = [];
+            this.indexData = [];
 
             for (let lat = 0; lat <= latBands; lat++) {
                 const theta = lat * Math.PI / latBands;
@@ -217,7 +197,7 @@
                     const yPos = cosTheta;
                     const zPos = sinPhi * sinTheta;
 
-                    vertexData.push(xPos * radius + x, yPos * radius + y, zPos * radius + z);
+                    this.vertexData.push(xPos, yPos, zPos);
                 }
             }
 
@@ -226,49 +206,102 @@
                     const first = (lat * (longBands + 1)) + long;
                     const second = first + longBands + 1;
 
-                    indexData.push(first, second, first + 1);
-                    indexData.push(second, second + 1, first + 1);
+                    this.indexData.push(first, second, first + 1);
+                    this.indexData.push(second, second + 1, first + 1);
                 }
             }
 
-            const sphereBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, sphereBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+            this.sphereBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertexData), gl.STATIC_DRAW);
 
-            const indexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, sphereBuffer);
-            gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(this.vertPos);
-
-            gl.drawElements(gl.TRIANGLES, indexData.length, gl.UNSIGNED_SHORT, 0);
+            this.indexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.indexData), gl.STATIC_DRAW);
         }
 
+        draw(trans) {
+            if (this.particles.length > 0) {
+                gl.useProgram(this.prog);
+                gl.uniformMatrix4fv(this.mvp, false, trans);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereBuffer);
+                gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(this.vertPos);
+
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
+                const scaleFactor = 0.03;  // Ridurre il fattore di scala per sfere più piccole
+
+                for (let i = 0; i < this.particles.length; i++) {
+                    const p = this.particles[i];
+                    const modelTrans = MatrixTranslate(p.x, p.y, p.z);
+                    const modelScale = MatrixScale(scaleFactor, scaleFactor, scaleFactor);
+                    const modelViewProjection = MatrixMult(trans, MatrixMult(modelTrans, modelScale));
+
+                    gl.uniformMatrix4fv(this.mvp, false, modelViewProjection);
+                    gl.drawElements(gl.TRIANGLES, this.indexData.length, gl.UNSIGNED_SHORT, 0);
+                }
+            }
+        }
     }
 
-        var waterVS = `
-            attribute vec3 pos;
+    var waterVS = `
+        attribute vec3 pos;
+        uniform mat4 mvp;
+        void main()
+        {
+            gl_Position = mvp * vec4(pos, 1.0);
+        }
+    `;
 
-            uniform mat4 mvp;
-            //uniform mat4 uPMatrix; 
+    var waterFS = `
+        precision mediump float;
+        void main()
+        {
+            gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0); // Colore blu per le particelle d'acqua
+        }
+    `;
+///////////////////////HELPER FUNCTION FOR ME //////////////////////////////
+    function MatrixScale(sx, sy, sz) {
+        return [
+            sx, 0,  0,  0,
+            0,  sy, 0,  0,
+            0,  0,  sz, 0,
+            0,  0,  0,  1
+        ];
+    }
 
-            void main()
-            {
-                //gl_Position = uPMatrix * mvp * vec4(pos, 1.0); //Con in piu uPMatrix
-                gl_Position = mvp * vec4(pos, 1.0);
-                gl_PointSize = 5.0; // Point dimension
+    function MatrixTranslate(x, y, z) {
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            x, y, z, 1
+        ];
+    }
+
+    function MatrixScale(sx, sy, sz) {
+        return [
+            sx, 0,  0,  0,
+            0,  sy, 0,  0,
+            0,  0,  sz, 0,
+            0,  0,  0,  1
+        ];
+    }
+
+    function MatrixMult(a, b) {
+        var c = new Array(16).fill(0);
+        for (var i = 0; i < 4; i++) {
+            for (var j = 0; j < 4; j++) {
+                for (var k = 0; k < 4; k++) {
+                    c[i * 4 + j] += a[i * 4 + k] * b[k * 4 + j];
+                }
             }
-        `;
-
-        var waterFS = `
-            precision mediump float;
-            void main()
-            {
-                gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0); //Blue color
-            }
-        `;
+        }
+        return c;
+    }
+//////////////////////////////////////////////////////////////////////
     </script>
     
     <script type="text/javascript">
@@ -308,7 +341,7 @@
         //waterDrawer.addPoint({x: 0, y: 0, z: 0})
         
         //INIT PARTICLES
-        const PARTICLES = 1000;  //TODO: Abbassato a 1000 perchè devo ottimizzares
+        const PARTICLES = 5000;  //TODO: Abbassato a 1000 perchè devo ottimizzares
         for (let i = 0; i < PARTICLES; i++) {
             let x = -1 + Math.random() * 2;  // x tra -1 e 1
             let y = -1.5 + Math.random();      // y tra -1 e 0
