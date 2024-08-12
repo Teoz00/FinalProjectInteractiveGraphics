@@ -195,6 +195,7 @@
             }
         }
 
+        //TODO: Ottimizzare questa funzione, troppi for diventa esponenziale. Vedere se riesco a far fare meno chiamate webGL
         drawSphere(x, y, z, radius) {
             const latBands = 30;
             const longBands = 30;
@@ -307,7 +308,7 @@
         //waterDrawer.addPoint({x: 0, y: 0, z: 0})
         
         //INIT PARTICLES
-        const PARTICLES = 5000; 
+        const PARTICLES = 1000;  //TODO: Abbassato a 1000 perchè devo ottimizzares
         for (let i = 0; i < PARTICLES; i++) {
             let x = -1 + Math.random() * 2;  // x tra -1 e 1
             let y = -1.5 + Math.random();      // y tra -1 e 0
