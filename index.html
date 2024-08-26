@@ -150,16 +150,66 @@
         ////////////////////////////////////
         //WaterDrawer and Sphere rendering ----> Switching to sphere instead of points, better develope
         ///////////////////////////////////
+        class Grid3D {
+            constructor(cellSize) {
+                this.cellSize = cellSize;
+                this.cells = new Map();
+            }
 
-    class Particle {
-        constructor(x, y, z) {
-            this.position = [x, y, z];
-            this.velocity = [0, 0, 0];
-            this.force = [0, 0, 0];
-            this.density = 0;
-            this.pressure = 0;
+            _hash(position) {
+                const x = Math.floor(position[0] / this.cellSize);
+                const y = Math.floor(position[1] / this.cellSize);
+                const z = Math.floor(position[2] / this.cellSize);
+                return `${x},${y},${z}`;
+            }
+
+            add(particle) {
+                const hash = this._hash(particle.position);
+                if (!this.cells.has(hash)) {
+                    this.cells.set(hash, []);
+                }
+                this.cells.get(hash).push(particle);
+            }
+
+            clear() {
+                this.cells.clear();
+            }
+
+            getNearby(particle) {
+                const nearby = [];
+                const [x, y, z] = [
+                    Math.floor(particle.position[0] / this.cellSize),
+                    Math.floor(particle.position[1] / this.cellSize),
+                    Math.floor(particle.position[2] / this.cellSize)
+                ];
+                
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dz = -1; dz <= 1; dz++) {
+                            const hash = `${x + dx},${y + dy},${z + dz}`;
+                            if (this.cells.has(hash)) {
+                                nearby.push(...this.cells.get(hash));
+                            }
+                        }
+                    }
+                }
+                return nearby;
+            }
         }
-    }
+
+        class Particle {
+            constructor(x, y, z) {
+                this.position = [x, y, z];
+                this.velocity = [0, 0, 0];
+                this.force = [0, 0, 0];
+                this.density = 0;
+                this.pressure = 0;
+                this.predictedPosition = [x, y, z];  // Posizione predetta
+                this.lambda = 0;  // Coefficiente di correzione della posizione
+                this.neighbors = [];  // Lista dei vicini
+            }
+        }
+
 
     class WaterDrawer {
         constructor() {
@@ -169,6 +219,7 @@
             this.particles = []; // Array per memorizzare le particelle ---- Inoltre tiene conto anche delle posizioni x y z 
 
             this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
+            this.isRunning = false;
         }
 
         addPoint(p) {
@@ -296,6 +347,16 @@
                             pi.force[0] += viscosityForce[0];
                             pi.force[1] += viscosityForce[1];
                             pi.force[2] += viscosityForce[2];
+
+                             // Forza di repulsione
+                            const repulsionStrength = 100.0; // Puoi regolare questa costante per cambiare la forza di repulsione
+                            if (r < H * 0.9) {  // Applica la repulsione solo se le particelle sono molto vicine
+                                let repulsionForce = (H - r) * repulsionStrength / r;
+
+                                pi.force[0] += repulsionForce * (pi.position[0] - pj.position[0]);
+                                pi.force[1] += repulsionForce * (pi.position[1] - pj.position[1]);
+                                pi.force[2] += repulsionForce * (pi.position[2] - pj.position[2]);
+                            }
                         }
                     }
                 }
@@ -304,11 +365,12 @@
             }
         }
 
+
         // Metodo per aggiornare le posizioni delle particelle
         integrate() {
             for (let i = 0; i < this.particles.length; i++) {
                 let pi = this.particles[i];
-
+                console.log("FORCE:" + pi.force + "velocity:" + pi.velocity + "pressure:" + pi.pressure + "density:" + pi.density);
                 pi.velocity[0] += (pi.force[0] / pi.density) * TIME_STEP;
                 pi.velocity[1] += (pi.force[1] / pi.density) * TIME_STEP;
                 pi.velocity[2] += (pi.force[2] / pi.density) * TIME_STEP;
@@ -316,8 +378,206 @@
                 pi.position[0] += pi.velocity[0] * TIME_STEP;
                 pi.position[1] += pi.velocity[1] * TIME_STEP;
                 pi.position[2] += pi.velocity[2] * TIME_STEP;
+
+                this.handleCollision(pi);
+            }
+            this.handleParticleCollisions();
+        }
+
+        handleCollision(particle) {
+            // Bordi del contenitore
+            const minBound = -1.0;
+            const maxBound = 1.0;
+
+            for (let i = 0; i < 3; i++) {
+                if (particle.position[i] < minBound) {
+                    particle.position[i] = minBound; // Impedisce di andare oltre il bordo
+                    particle.velocity[i] = -particle.velocity[i] * 0.9; // Inverte la velocità per simulare il rimbalzo
+                } else if (particle.position[i] > maxBound) {
+                    particle.position[i] = maxBound;
+                    particle.velocity[i] = -particle.velocity[i] * 0.9 ;
+                }
             }
         }
+
+        handleParticleCollisions() {
+            const grid = new Grid3D(0.06); // Due volte il raggio delle particelle
+            const minDist = 2 * 0.03; 
+            for (let i = 0; i < this.particles.length; i++) {
+                grid.add(this.particles[i]);
+            }
+
+            for (let i = 0; i < this.particles.length; i++) {
+                let pi = this.particles[i];
+                let nearbyParticles = grid.getNearby(pi);
+
+                for (let j = 0; j < nearbyParticles.length; j++) {
+                    let pj = nearbyParticles[j];
+                    if (pi === pj) continue; // Evita di confrontare la particella con sé stessa
+
+                    let r2 = this.squaredDistance(pi.position, pj.position);
+                    let r = Math.sqrt(r2);
+
+                    if (r < minDist) {
+                        let overlap = minDist - r;
+                        let direction = [
+                            (pi.position[0] - pj.position[0]) / r,
+                            (pi.position[1] - pj.position[1]) / r,
+                            (pi.position[2] - pj.position[2]) / r
+                        ];
+
+                        let separationForce = overlap * 0.1;
+
+                        pi.position[0] += direction[0] * separationForce;
+                        pi.position[1] += direction[1] * separationForce;
+                        pi.position[2] += direction[2] * separationForce;
+
+                        pj.position[0] -= direction[0] * separationForce;
+                        pj.position[1] -= direction[1] * separationForce;
+                        pj.position[2] -= direction[2] * separationForce;
+                    }
+                }
+            }
+        }
+
+        predictPositions() {
+        for (let i = 0; i < this.particles.length; i++) {
+            let pi = this.particles[i];
+            pi.velocity[0] += (pi.force[0] / pi.density) * TIME_STEP;
+            pi.velocity[1] += (pi.force[1] / pi.density) * TIME_STEP;
+            pi.velocity[2] += (pi.force[2] / pi.density) * TIME_STEP;
+           // console.log("VELOCITA X: " + pi.velocity[0] + "\n" + "VELOCITA Y: " + pi.velocity[1] + "\n" + "VELOCITA Z: " + pi.velocity[2] + "\n");
+           // console.log("FORZA Y:" + pi.force[1]);
+            pi.predictedPosition[0] = pi.position[0] + pi.velocity[0] * TIME_STEP;
+            pi.predictedPosition[1] = pi.position[1] + pi.velocity[1] * TIME_STEP;
+            pi.predictedPosition[2] = pi.position[2] + pi.velocity[2] * TIME_STEP;
+            //console.log("POS X: " + pi.predictedPosition[0] + "\n" + "POS Y: " + pi.predictedPosition[1] + "\n" + "POS Z: " + pi.predictedPosition[2] + "\n");
+
+        }
+    }
+
+    // Trovare i vicini per ogni particella
+    findNeighbors() {
+        const radiusSquared = H * H;
+        for (let i = 0; i < this.particles.length; i++) {
+            let pi = this.particles[i];
+            pi.neighbors = [];
+            for (let j = 0; j < this.particles.length; j++) {
+                if (i !== j) {
+                    let pj = this.particles[j];
+                    let r2 = this.squaredDistance(pi.predictedPosition, pj.predictedPosition);
+                    if (r2 < radiusSquared) {
+                        pi.neighbors.push(pj);
+                    }
+                }
+            }
+        }
+    }
+
+    // Calcolare i lambda per ogni particella
+    calculateLambdas() {
+        const epsilon = 0.0001;
+        for (let i = 0; i < this.particles.length; i++) {
+            let pi = this.particles[i];
+            let densityConstraint = 0;
+
+            for (let j = 0; j < pi.neighbors.length; j++) {
+                let pj = pi.neighbors[j];
+                let r2 = this.squaredDistance(pi.predictedPosition, pj.predictedPosition);
+                densityConstraint += this.poly6Kernel(r2);
+            }
+            densityConstraint = (densityConstraint / REST_DENSITY) - 1;
+
+            let sumGradientSquared = 0;
+            let gradientSum = [0, 0, 0];
+
+            for (let j = 0; j < pi.neighbors.length; j++) {
+                let pj = pi.neighbors[j];
+                let r = Math.sqrt(this.squaredDistance(pi.predictedPosition, pj.predictedPosition));
+                let gradW = this.spikyKernelGradient(pi.predictedPosition, pj.predictedPosition, r);
+
+                sumGradientSquared += gradW[0] ** 2 + gradW[1] ** 2 + gradW[2] ** 2;
+                gradientSum[0] += gradW[0];
+                gradientSum[1] += gradW[1];
+                gradientSum[2] += gradW[2];
+            }
+
+            sumGradientSquared += gradientSum[0] ** 2 + gradientSum[1] ** 2 + gradientSum[2] ** 2;
+            pi.lambda = -densityConstraint / (sumGradientSquared + epsilon);
+        }
+    }
+
+    // Correggere le posizioni delle particelle
+    correctPositions() {
+        for (let i = 0; i < this.particles.length; i++) {
+            let pi = this.particles[i];
+            let deltaP = [0, 0, 0];
+
+            for (let j = 0; j < pi.neighbors.length; j++) {
+                let pj = pi.neighbors[j];
+                let r = Math.sqrt(this.squaredDistance(pi.predictedPosition, pj.predictedPosition));
+                let gradW = this.spikyKernelGradient(pi.predictedPosition, pj.predictedPosition, r);
+
+                deltaP[0] += (pi.lambda + pj.lambda) * gradW[0];
+                deltaP[1] += (pi.lambda + pj.lambda) * gradW[1];
+                deltaP[2] += (pi.lambda + pj.lambda) * gradW[2];
+            }
+
+            pi.predictedPosition[0] += deltaP[0];
+            pi.predictedPosition[1] += deltaP[1];
+            pi.predictedPosition[2] += deltaP[2];
+        }
+    }
+
+    // Aggiornare la velocità e la posizione delle particelle
+    updatePositionsAndVelocities() {
+        for (let i = 0; i < this.particles.length; i++) {
+            let pi = this.particles[i];
+            pi.velocity[0] = (pi.predictedPosition[0] - pi.position[0]) / TIME_STEP;
+            pi.velocity[1] = (pi.predictedPosition[1] - pi.position[1]) / TIME_STEP;
+            pi.velocity[2] = (pi.predictedPosition[2] - pi.position[2]) / TIME_STEP;
+            //console.log("POS X: " + pi.velocity[0] + "\n" + "POS Y: " + pi.velocity[1] + "\n" + "POS Z: " + pi.velocity[2] + "\n");
+
+            pi.position[0] = pi.predictedPosition[0];
+            pi.position[1] = pi.predictedPosition[1];
+            pi.position[2] = pi.predictedPosition[2];
+            //console.log("POS X: " + pi.predictedPosition[0] + "\n" + "POS Y: " + pi.predictedPosition[1] + "\n" + "POS Z: " + pi.predictedPosition[2] + "\n");
+
+
+            this.handleCollision(pi);  // Gestire le collisioni con i bordi del contenitore
+            this.handleParticleCollisions();  // Gestire le collisioni tra le particelle
+        }
+    }
+
+    // Funzioni kernel
+    spikyKernelGradient(p1, p2, r) {
+        const h = H;
+        const h2 = h * h;
+        const rVec = [
+            p1[0] - p2[0],
+            p1[1] - p2[1],
+            p1[2] - p2[2],
+        ];
+        const factor = -45 / (Math.PI * h2 * h2) * (h - r);
+        return [
+            factor * rVec[0] / r,
+            factor * rVec[1] / r,
+            factor * rVec[2] / r
+        ];
+    }
+
+    // Metodo principale per eseguire la simulazione
+    simulate() {
+        this.computeDensityPressure();    // Passo 1: Calcolo di densità e pressione
+        this.computeForces();             // Passo 2: Calcolo delle forze
+        this.integrate();
+        //this.predictPositions();          // Passo 3: Predizione delle posizioni
+        //this.findNeighbors();             // Passo 4: Ricerca dei vicini
+        //this.calculateLambdas();          // Passo 5: Calcolo dei lambda
+        //this.correctPositions();          // Passo 6: Correzione delle posizioni
+        //this.updatePositionsAndVelocities(); // Passo 7: Aggiornamento delle velocità e delle posizioni
+    }
+
 
         // Funzione helper per calcolare la distanza al quadrato
         squaredDistance(a, b) {
@@ -377,12 +637,12 @@
     `;
 
 ///////////////////////CONSTANT VALUE/////////////////////////////////////// --> Somo inspiegabilmente gia presenti
-    const H = 0.1;               // Raggio di influenza (kernel support radius)
+    const H = 0.01;               // Raggio di influenza (kernel support radius)
     const MASS = 0.02;           // Massa di ogni particella
     const REST_DENSITY = 1000;   // Densità di riposo del fluido
     const GAS_CONST = 2000;      // Costante del gas per la pressione
     const VISCOSITY = 0.1;       // Viscosità del fluido
-    const TIME_STEP = 0.01;      // Passo temporale per l'integrazione
+    const TIME_STEP = 0.035;      // Passo temporale per l'integrazione
 
     const GRAVITY = [0, -9.81, 0]; // Accelerazione di gravità
 
@@ -470,6 +730,38 @@
         
         // Set the viewport size
         UpdateCanvasSize();
+
+      //  startSimulation();
+    } 
+
+    function startWaterSimulation() {
+      /*  function renderLoop(){
+        waterDrawer.computeDensityPressure();
+        waterDrawer.computeForces();
+        waterDrawer.integrate();
+
+        // Clear the canvas
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // Update the view and projection matrices
+      //  updateViewProjectionMatrix();
+
+        // Draw the box (cubo)
+        //boxDrawer.draw(MVP);
+
+        // Draw the particles
+        waterDrawer.draw(MVP);
+
+        // Request the next frame
+        requestAnimationFrame(renderLoop);
+        }
+        renderLoop();*/
+        if (waterDrawer.isRunning){
+            waterDrawer.simulate();
+            //waterDrawer.draw(MVP);
+            requestAnimationFrame(startWaterSimulation);
+            DrawScene();
+        } 
     }
     
     // Called every time the window size is changed.
@@ -638,29 +930,6 @@
         
         return r;
     }
-  //  mainLoop(); 
-
-/*
-
-  waterDrawer.computeDensityPressure();
-        waterDrawer.computeForces();
-        waterDrawer.integrate();
-       // waterDrawer.updateParticles();
-        waterDrawer.draw(MVP);  // Usare la matrice di trasformazione adeguata
-        DrawScene();
-    // Main loop
-    function renderLoop() {
-        waterDrawer.computeDensityPressure();
-        waterDrawer.computeForces();
-        waterDrawer.integrate();
-        waterDrawer.updateParticles();
-        waterDrawer.draw(MVP);  // Usare la matrice di trasformazione adeguata
-
-        requestAnimationFrame(renderLoop);
-    }
-
-    renderLoop();
-*/
     
     ///////////////////////////////////////////////////////////////////////////////////
     </script>
@@ -1027,11 +1296,14 @@
         {
             var timestep = document.getElementById('timestep').value;
             if ( ! this.isSimulationRunning() ) this.timer = setInterval( function(){ massSpring.simTimeStep(); }, timestep );
+            waterDrawer.isRunning = true;
+            startWaterSimulation();
         }
         stopSimulation()
         {
             clearInterval( this.timer );
             this.timer = undefined;
+            waterDrawer.isRunning = false;
         }
         isSimulationRunning() { return this.timer !== undefined; }
         restartSimulation() { if ( this.isSimulationRunning() ) { this.stopSimulation(); this.startSimulation(); } }
