@@ -220,6 +220,11 @@
 
             this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
             this.isRunning = false;
+            this.innerCubeBounds = {min: {x: -0.5, y: -0.5, z: -0.5}, max: {x: 0.5, y: 0.5, z: 0.5}};  // Limiti del cubo interno
+            this.massSpring;
+            this.GRAVITY = [0, -9.81, 0] //I modify those constant in the other part of code (variable value) 
+            this.MASS = 0.02;
+            this.TIME_STEP = 0.035; 
         }
 
         addPoint(p) {
@@ -231,6 +236,10 @@
         clearParticles() {
             this.particles = [];
           //  this.updateParticles();
+        }
+
+        setMassSpring(massSpring) {
+            this.massSpring = massSpring;
         }
 
       //  updateParticles() {
@@ -317,7 +326,7 @@
                     let pj = this.particles[j];
                     let r2 = this.squaredDistance(pi.position, pj.position);
                     if (r2 < H * H) {
-                        pi.density += MASS * this.poly6Kernel(r2);
+                        pi.density += this.MASS * this.poly6Kernel(r2);
                     }
                 }
                 pi.pressure = GAS_CONST * (pi.density - REST_DENSITY);
@@ -361,7 +370,7 @@
                     }
                 }
                 // Aggiungere la forza di gravità
-                pi.force[1] += pi.density * GRAVITY[1];
+                pi.force[1] += pi.density * this.GRAVITY[1];
             }
         }
 
@@ -370,14 +379,14 @@
         integrate() {
             for (let i = 0; i < this.particles.length; i++) {
                 let pi = this.particles[i];
-                console.log("FORCE:" + pi.force + "velocity:" + pi.velocity + "pressure:" + pi.pressure + "density:" + pi.density);
-                pi.velocity[0] += (pi.force[0] / pi.density) * TIME_STEP;
-                pi.velocity[1] += (pi.force[1] / pi.density) * TIME_STEP;
-                pi.velocity[2] += (pi.force[2] / pi.density) * TIME_STEP;
+                //console.log("FORCE:" + pi.force + "velocity:" + pi.velocity + "pressure:" + pi.pressure + "density:" + pi.density);
+                pi.velocity[0] += (pi.force[0] / pi.density) * this.TIME_STEP;
+                pi.velocity[1] += (pi.force[1] / pi.density) * this.TIME_STEP;
+                pi.velocity[2] += (pi.force[2] / pi.density) * this.TIME_STEP;
 
-                pi.position[0] += pi.velocity[0] * TIME_STEP;
-                pi.position[1] += pi.velocity[1] * TIME_STEP;
-                pi.position[2] += pi.velocity[2] * TIME_STEP;
+                pi.position[0] += pi.velocity[0] * this.TIME_STEP;
+                pi.position[1] += pi.velocity[1] * this.TIME_STEP;
+                pi.position[2] += pi.velocity[2] * this.TIME_STEP;
 
                 this.handleCollision(pi);
             }
@@ -443,14 +452,14 @@
         predictPositions() {
         for (let i = 0; i < this.particles.length; i++) {
             let pi = this.particles[i];
-            pi.velocity[0] += (pi.force[0] / pi.density) * TIME_STEP;
-            pi.velocity[1] += (pi.force[1] / pi.density) * TIME_STEP;
-            pi.velocity[2] += (pi.force[2] / pi.density) * TIME_STEP;
+            pi.velocity[0] += (pi.force[0] / pi.density) * this.TIME_STEP;
+            pi.velocity[1] += (pi.force[1] / pi.density) * this.TIME_STEP;
+            pi.velocity[2] += (pi.force[2] / pi.density) * this.TIME_STEP;
            // console.log("VELOCITA X: " + pi.velocity[0] + "\n" + "VELOCITA Y: " + pi.velocity[1] + "\n" + "VELOCITA Z: " + pi.velocity[2] + "\n");
            // console.log("FORZA Y:" + pi.force[1]);
-            pi.predictedPosition[0] = pi.position[0] + pi.velocity[0] * TIME_STEP;
-            pi.predictedPosition[1] = pi.position[1] + pi.velocity[1] * TIME_STEP;
-            pi.predictedPosition[2] = pi.position[2] + pi.velocity[2] * TIME_STEP;
+            pi.predictedPosition[0] = pi.position[0] + pi.velocity[0] * this.TIME_STEP;
+            pi.predictedPosition[1] = pi.position[1] + pi.velocity[1] * this.TIME_STEP;
+            pi.predictedPosition[2] = pi.position[2] + pi.velocity[2] * this.TIME_STEP;
             //console.log("POS X: " + pi.predictedPosition[0] + "\n" + "POS Y: " + pi.predictedPosition[1] + "\n" + "POS Z: " + pi.predictedPosition[2] + "\n");
 
         }
@@ -533,9 +542,9 @@
     updatePositionsAndVelocities() {
         for (let i = 0; i < this.particles.length; i++) {
             let pi = this.particles[i];
-            pi.velocity[0] = (pi.predictedPosition[0] - pi.position[0]) / TIME_STEP;
-            pi.velocity[1] = (pi.predictedPosition[1] - pi.position[1]) / TIME_STEP;
-            pi.velocity[2] = (pi.predictedPosition[2] - pi.position[2]) / TIME_STEP;
+            pi.velocity[0] = (pi.predictedPosition[0] - pi.position[0]) / this.TIME_STEP;
+            pi.velocity[1] = (pi.predictedPosition[1] - pi.position[1]) / this.TIME_STEP;
+            pi.velocity[2] = (pi.predictedPosition[2] - pi.position[2]) / this.TIME_STEP;
             //console.log("POS X: " + pi.velocity[0] + "\n" + "POS Y: " + pi.velocity[1] + "\n" + "POS Z: " + pi.velocity[2] + "\n");
 
             pi.position[0] = pi.predictedPosition[0];
@@ -638,13 +647,13 @@
 
 ///////////////////////CONSTANT VALUE/////////////////////////////////////// --> Somo inspiegabilmente gia presenti
     const H = 0.01;               // Raggio di influenza (kernel support radius)
-    const MASS = 0.02;           // Massa di ogni particella
+    //const MASS = 0.02;           // Massa di ogni particella
     const REST_DENSITY = 1000;   // Densità di riposo del fluido
     const GAS_CONST = 2000;      // Costante del gas per la pressione
     const VISCOSITY = 0.1;       // Viscosità del fluido
-    const TIME_STEP = 0.035;      // Passo temporale per l'integrazione
+    //const TIME_STEP = 0.035;      // Passo temporale per l'integrazione
 
-    const GRAVITY = [0, -9.81, 0]; // Accelerazione di gravità
+    //const GRAVITY = [0, -9.81, 0]; // Accelerazione di gravità
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -714,6 +723,7 @@
         pointDrawer = new PointDrawer();
         meshDrawer  = new MeshDrawer();
         waterDrawer = new WaterDrawer();
+       // console.log("MASS_SPRING:" + massSpring);
         
         //INIT PARTICLES
         const PARTICLES = 5000;  //TODO: Abbassato a 1000 perchè devo ottimizzares
@@ -759,8 +769,13 @@
         if (waterDrawer.isRunning){
             waterDrawer.simulate();
             //waterDrawer.draw(MVP);
+            if (waterDrawer.massSpring != null)
+                //console.log("PROVA: " + waterDrawer.massSpring.pos[0].unit());
+            console.log("NODES: " + massSpring.nodes[0]);
             requestAnimationFrame(startWaterSimulation);
             DrawScene();
+            
+            //  console.log("PROVA: " + waterDrawer.massSpring);
         } 
     }
     
@@ -1164,7 +1179,13 @@
             this.damping = 1;
             this.restitution = .8;
             this.setMesh( document.getElementById('box.obj').text );
+            this.nodes = []
         }
+
+        applyForceToNode(nodeIndex, force) {
+            this.nodes[nodeIndex].force.add(force);
+        }
+
         setMesh( objdef )
         {
             this.mesh = new ObjMesh;
@@ -1283,6 +1304,9 @@
             const dt = timestep / 1000;	// time step in seconds
             const damping = this.damping * this.stiffness * dt;
             SimTimeStep( dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution );
+            //console.log("PROVA: " + massSpring.mass)
+            waterDrawer.setMassSpring(massSpring);
+           // console.log("PROVA: " + waterDrawer.massSpring);
             
             // make sure that the selected vertex does not change position
             if ( p ) {
@@ -1464,6 +1488,9 @@
         }
         
         massSpring = new MassSpring();
+       // waterDrawer.setMassSpring(massSpring);
+        //console.log("NODES: " + massSpring.nodes); 
+        //console.log("WATER: " + waterDrawer.massSpring);
         
         SetGravity  ( document.getElementById('gravity') );
         SetMass     ( document.getElementById('mass') );
@@ -1523,6 +1550,7 @@
     {
         var s = param.value;
         document.getElementById('timestep-value').innerText = s + " ms";
+        waterDrawer.TIME_STEP = s*0.001;
     }
     
     function SetGravity( param )
@@ -1531,6 +1559,7 @@
         var s = v / 20;
         document.getElementById('gravity-value').innerText = s.toFixed( 2 );
         massSpring.gravity.y = -s;
+        waterDrawer.GRAVITY[1] = -s;
     }
     
     function SetMass( param )
@@ -1539,6 +1568,7 @@
         var s = v / 200;
         document.getElementById('mass-value').innerText = s.toFixed( 3 );
         massSpring.mass = s;
+        waterDrawer.MASS = s; 
     }
     
     function SetStiffness( param )
