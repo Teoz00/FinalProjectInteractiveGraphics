@@ -5,7 +5,6 @@
     <title>CS 4600 - Project Interactive Graphics</title>
     <script type="text/javascript" id="includedscript" src="project.js"></script>
     <script type="text/javascript" src="obj.js"></script>
-    <script type="text/javascript" src="waterParticle.js"></script>
     <script type="text/javascript">
     ///////////////////////////////////////////////////////////////////////////////////
     // Below is the code for the object that draws lines.
@@ -342,6 +341,7 @@
                     if (i !== j) {
                         let pj = this.particles[j];
                         let r2 = this.squaredDistance(pi.position, pj.position);
+                        //console.log("PARTICLE DISTANCES :" + r2); 
                         if (r2 < H * H) {
                             let r = Math.sqrt(r2);
 
@@ -407,7 +407,61 @@
                     particle.velocity[i] = -particle.velocity[i] * 0.9 ;
                 }
             }
+           /* 
+            if (this.massSpring != null)  {
+                console.log("PROVA massSpring: " + this.massSpring.nodes[0]);
+            }
+
+            if (this.massSpring != null){
+                for (let i = 0; i < this.massSpring.nodes.length; i++) { //TODO: Problema, parte con lunghezza 0
+                    //console.log("PROVA: " + this.massSpring);
+                    let node = this.massSpring.nodes[i];
+                    let dist = this.squaredDistance(particle.position, node.position);
+
+                    let someThreshold = 0.25;
+                    if (dist < someThreshold) {  // Definisci una soglia adeguata per la collisione
+                        // Calcola la forza da applicare sulla particella d'acqua
+                        let force = this.calculateCollisionForce(particle, node);
+
+                        // Applica una forza opposta al nodo del cubo elastico
+                        this.massSpring.applyForceToNode(i, force.negate()); //TODO: al posto di negate metto - 
+
+                        // Modifica la velocità della particella
+                        particle.velocity[0] += force.x / particle.density;
+                        particle.velocity[1] += force.y / particle.density;
+                        particle.velocity[2] += force.z / particle.density;
+                    }
+                }
+            }*/
         }
+/*
+        calculateCollisionForce(particle, node) {
+            // Calcola la forza di collisione basata sulla differenza di velocità e posizione
+            // Puoi usare una formula simile a quella del kernel di viscosità
+            let relativeVelocity = [
+                node.velocity.x - particle.velocity[0],
+                node.velocity.y - particle.velocity[1],
+                node.velocity.z - particle.velocity[2],
+            ];
+
+            let relativePosition = [
+                node.position.x - particle.position[0],
+                node.position.y - particle.position[1],
+                node.position.z - particle.position[2],
+            ];
+
+            let someThreshold = 0.25; 
+            let distance = Math.sqrt(this.squaredDistance(particle.position, node.position));
+            let forceMagnitude = this.massSpring.stiffness * (someThreshold - distance);
+            let force = [
+                relativePosition[0] * forceMagnitude + relativeVelocity[0] * this.massSpring.damping,
+                relativePosition[1] * forceMagnitude + relativeVelocity[1] * this.massSpring.damping,
+                relativePosition[2] * forceMagnitude + relativeVelocity[2] * this.massSpring.damping,
+            ];
+
+            return new Vec3(force[0], force[1], force[2]);
+        }
+*/
 
         handleParticleCollisions() {
             const grid = new Grid3D(0.06); // Due volte il raggio delle particelle
@@ -726,7 +780,7 @@
        // console.log("MASS_SPRING:" + massSpring);
         
         //INIT PARTICLES
-        const PARTICLES = 5000;  //TODO: Abbassato a 1000 perchè devo ottimizzares
+        const PARTICLES = 3500;  //TODO: Abbassato a 1000 perchè devo ottimizzares
         for (let i = 0; i < PARTICLES; i++) {
             let x = -1 + Math.random() * 2;  // x tra -1 e 1
             let y = -1.5 + Math.random();      // y tra -1 e 0
@@ -771,7 +825,8 @@
             //waterDrawer.draw(MVP);
             if (waterDrawer.massSpring != null)
                 //console.log("PROVA: " + waterDrawer.massSpring.pos[0].unit());
-            console.log("NODES: " + massSpring.nodes[0]);
+                console.log("");
+            //console.log("NODES: " + massSpring.nodes[0]);
             requestAnimationFrame(startWaterSimulation);
             DrawScene();
             
@@ -1232,6 +1287,8 @@
             for ( var i=0; i<this.nrm.length; ++i ) this.nrm[i] = ToVec3( this.mesh.norm[i] );
             this.buffers = this.mesh.getVertexBuffers();
             meshDrawer.setMesh( this.buffers.positionBuffer, this.buffers.texCoordBuffer, this.buffers.normalBuffer );
+           // waterDrawer.clearParticles();
+            //GenerateParticles();
         }
     
         updateMesh()
@@ -1568,7 +1625,7 @@
         var s = v / 200;
         document.getElementById('mass-value').innerText = s.toFixed( 3 );
         massSpring.mass = s;
-        waterDrawer.MASS = s; 
+        waterDrawer.MASS = s * 0.01; 
     }
     
     function SetStiffness( param )
@@ -1596,7 +1653,7 @@
         DrawScene();
     }
 
-    var particles = 1000; // Valore iniziale predefinito
+    var particles = 1000; // accuratezza dello slider
 
     function SetParticle(param) {
         var p = param.value;
@@ -1812,7 +1869,7 @@
     <div class="control">OBJ model:<br/><input id="obj" type="file" onchange="LoadObj(this)" accept=".obj"/></div>
     <div class="control">Texture image:<br/><input id="texture" type="file" onchange="LoadTexture(this)" accept="image/*"/></div>
     <div class="control"><img id="texture-img" /></div>
-    <div class="control"><span id="water-particle-label">Water Particle:</span><span class="value" id="water-particle-value">5000</span><input id="waterParticle" type="range" min="0" max="40000" value="1000" oninput="SetParticle(this)" ondblclick="this.value=10000;this.oninput()"/></div>
+    <div class="control"><span id="water-particle-label">Water Particle:</span><span class="value" id="water-particle-value">2500</span><input id="waterParticle" type="range" min="0" max="40000" value="1000" oninput="SetParticle(this)" ondblclick="this.value=10000;this.oninput()"/></div>
     </div>
     </div>
     </div>
