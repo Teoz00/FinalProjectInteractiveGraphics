@@ -217,6 +217,9 @@
             this.vertPos = gl.getAttribLocation(this.prog, 'pos');
             this.particles = []; // Array per memorizzare le particelle ---- Inoltre tiene conto anche delle posizioni x y z 
 
+            this.textureUniform = gl.getUniformLocation(this.prog, 'u_texture');
+            this.texCoordAttr = gl.getAttribLocation(this.prog, 'a_texCoord');
+
             this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
             this.isRunning = false;
             this.innerCubeBounds = {min: {x: -0.5, y: -0.5, z: -0.5}, max: {x: 0.5, y: 0.5, z: 0.5}};  // Limiti del cubo interno
@@ -224,6 +227,21 @@
             this.GRAVITY = [0, -9.81, 0] //I modify those constant in the other part of code (variable value) 
             this.MASS = 0.02;
             this.TIME_STEP = 0.035; 
+            this.texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, this.texture);
+
+            const image = new Image();
+            let imageSRC = "Sphere.png"; //Reminder for me, change this path to change image
+            image.src = imageSRC; 
+            image.onload = () => {
+                gl.bindTexture(gl.TEXTURE_2D, this.texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+            };
         }
 
         addPoint(p) {
@@ -250,9 +268,11 @@
            // gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); //TODO: fare il check poichè dava errori
       //  }
 
+        //I define my mesh sphere
         createSphereGeometry(latBands, longBands) {
             this.vertexData = [];
             this.indexData = [];
+            this.texCoordData = [];
 
             for (let lat = 0; lat <= latBands; lat++) {
                 const theta = lat * Math.PI / latBands;
@@ -269,6 +289,7 @@
                     const zPos = sinPhi * sinTheta;
 
                     this.vertexData.push(xPos, yPos, zPos);
+                    this.texCoordData.push(long / longBands, lat / latBands);
                 }
             }
 
@@ -286,6 +307,12 @@
             gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertexData), gl.STATIC_DRAW);
 
+            this.texCoordBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.texCoordData), gl.STATIC_DRAW);
+
+
+
             this.indexBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.indexData), gl.STATIC_DRAW);
@@ -296,9 +323,17 @@
                 gl.useProgram(this.prog);
                 gl.uniformMatrix4fv(this.mvp, false, trans);
 
+                gl.bindTexture(gl.TEXTURE_2D, this.texture);
+                gl.uniform1i(this.textureUniform, 0); // Associa l'unità texture 0
+
+
                 gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereBuffer);
                 gl.vertexAttribPointer(this.vertPos, 3, gl.FLOAT, false, 0, 0);
                 gl.enableVertexAttribArray(this.vertPos);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.texCoordBuffer);
+                gl.vertexAttribPointer(this.texCoordAttr, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(this.texCoordAttr);
 
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
 
@@ -684,18 +719,27 @@
 
     var waterVS = `
         attribute vec3 pos;
+        attribute vec2 a_texCoord;  // Attributo per le coordinate delle texture
+
         uniform mat4 mvp;
+
+        varying vec2 v_texCoord;
         void main()
         {
             gl_Position = mvp * vec4(pos, 1.0);
+
+            v_texCoord = a_texCoord;
         }
     `;
 
     var waterFS = `
         precision mediump float;
+        uniform sampler2D u_texture; // Sampler per la texture
+        varying vec2 v_texCoord;     // Coordinate della texture
         void main()
         {
-            gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0); // Colore blu per le particelle d'acqua
+            vec4 texColor = texture2D(u_texture, v_texCoord); // Ottieni il colore dalla texture
+            gl_FragColor = texColor; // Usa il colore della texture per il frammento
         }
     `;
 
