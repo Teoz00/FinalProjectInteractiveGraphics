@@ -545,40 +545,80 @@
             }
         }
 
+        printDebbuggingCubeVertices(v0, v1, v2){ //Uso questa funzione per debuggarmi handleCollisionWithCube 
+             console.log("INDEX: " + i + "\n");
+                console.log("V0 --> " + "POSIZIONE X --> " + v0.x +"\n"
+                            +"POSIZIONE Y --> " + v0.y +"\n"
+                            +"POSIZIONE Z --> " + v0.z
+                );
+                
+                console.log("V1 --> " + "POSIZIONE X --> " + v1.x +"\n"
+                            +"POSIZIONE Y --> " + v1.y +"\n"
+                            +"POSIZIONE Z --> " + v1.z
+                );
+
+                console.log("V2 -- > " + "POSIZIONE X --> " + v2.x +"\n"
+                            +"POSIZIONE Y --> " + v2.y +"\n"
+                            +"POSIZIONE Z --> " + v2.z
+                );
+        }
+
         handleCollisionWithCube(particle, cubeVertices) {
+            // Predefined indices for the vertices of each face of the cube
+            const faceIndices = [
+                [0, 1, 2], [0, 2, 3], // Front face
+                [4, 5, 6], [4, 6, 7], // Back face
+                [0, 1, 5], [0, 5, 4], // Bottom face
+                [2, 3, 7], [2, 7, 6], // Top face
+                [0, 3, 7], [0, 7, 4], // Left face
+                [1, 2, 6], [1, 6, 5]  // Right face
+            ];
+
             // Loop over each face of the cube
-            for (let i = 0; i < cubeVertices.length; i += 3) {
-                const v0 = cubeVertices[i];
-                const v1 = cubeVertices[i + 1];
-                const v2 = cubeVertices[i + 2];
+            for (let i = 0; i < faceIndices.length; i++) {
+                const v0 = cubeVertices[faceIndices[i][0]];
+                const v1 = cubeVertices[faceIndices[i][1]];
+                const v2 = cubeVertices[faceIndices[i][2]];
 
                 // Calculate face normal
-                const edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-                const edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+                const edge1 = [v1.x - v0.x, v1.y - v0.y, v1.z - v0.z];
+                const edge2 = [v2.x - v0.x, v2.y - v0.y, v2.z - v0.z];
                 const faceNormal = crossProduct(edge1, edge2);
+
+                //TODO: FARE IL CHECK DI QUESTA PARTE
+                const magnitude = Math.sqrt(dotProduct(faceNormal, faceNormal));
+                for (let j = 0; j < 3; j++) {
+                    faceNormal[j] /= magnitude;  // Normalize the normal
+                }
+                ///////////
 
                 // Calculate distance from particle to face plane
                 const particleToVertex = [
-                    particle.position[0] - v0[0],
-                    particle.position[1] - v0[1],
-                    particle.position[2] - v0[2],
+                    particle.position[0] - v0.x,
+                    particle.position[1] - v0.y,
+                    particle.position[2] - v0.z,
                 ];
 
                 const distance = dotProduct(faceNormal, particleToVertex);
+                //console.log("DISTANCE --> " + distance);
+                //TODO: HANDLE COLLISION WITH EXTERNAL CUBE, NOT ONLY FOR THE FLOOR 
                 if (distance < 0) {  // The particle is inside the cube
                     // Reflect particle's velocity
+                   // console.log("HI IM HERE");
                     const velocityDotNormal = dotProduct(faceNormal, particle.velocity);
                     for (let j = 0; j < 3; j++) {
                         particle.velocity[j] -= 2 * velocityDotNormal * faceNormal[j];
                     }
 
                     // Move particle outside the cube slightly
+                    const moveOutFactor = 0.0001; //Inserisco questa variabile per gestirmi meglio le collissioni con il cubo
                     for (let j = 0; j < 3; j++) {
-                        particle.position[j] -= distance * faceNormal[j];
+                        particle.position[j] -= distance * faceNormal[j] * moveOutFactor;
                     }
                 }
             }
         }
+
         
         predictPositions() {
         for (let i = 0; i < this.particles.length; i++) {
@@ -708,19 +748,40 @@
 
     // Metodo principale per eseguire la simulazione
     simulate() {
-        this.computeDensityPressure();    // Passo 1: Calcolo di densità e pressione
-        this.computeForces();             // Passo 2: Calcolo delle forze
-        this.integrate();
-        //this.predictPositions();          // Passo 3: Predizione delle posizioni
-        //this.findNeighbors();             // Passo 4: Ricerca dei vicini
-        //this.calculateLambdas();          // Passo 5: Calcolo dei lambda
-        //this.correctPositions();          // Passo 6: Correzione delle posizioni
-        //this.updatePositionsAndVelocities(); // Passo 7: Aggiornamento delle velocità e delle posizioni
 
-        let cubeVertices = this.massSpring.pos; // Assuming the massSpring has the updated cube vertices
-        for (let i = 0; i < this.particles.length; i++) {
-            this.handleCollisionWithCube(this.particles[i], cubeVertices);
+       /* if (!this.massSpring) {
+            console.error("MassSpring or its positions are not defined!");
+            return;
         }
+
+        if (!this.massSpring.pos) {
+            console.error("Keep out mate");
+            return; 
+        }*/
+
+        this.computeDensityPressure();    //  Calcolo di densità e pressione
+        this.computeForces();             //  Calcolo delle forze
+        this.integrate();
+        //troppo pesante come implementazione
+        //this.predictPositions();          // Predizione delle posizioni
+        //this.findNeighbors();             //  Ricerca dei vicini
+        //this.calculateLambdas();          //  Calcolo dei lambda
+        //this.correctPositions();          //  Correzione delle posizioni
+        //this.updatePositionsAndVelocities(); //  Aggiornamento delle velocità e delle posizioni
+        let cubeVertices;
+        if (this.massSpring !== undefined) {
+            cubeVertices = this.massSpring.pos;
+            //console.log("CUBEVERTICES --> " + cubeVertices);
+           // console.log("LENGHT OF VERTEX --> " + cubeVertices.length);
+            //console.log("THIS.MASSPRING--> " + this.massSpring.pos[7])
+            for (let i = 0; i < this.particles.length; i++) {
+               // console.log("HI I M HERE" + cubeVertices[8]);
+            //*********COMMENTARE QUI PER RIMUOVERE L'INTERAZIONE CON IL CUBO, POTREBBE AVERE PROBLEMI CAUSA PC*
+                this.handleCollisionWithCube(this.particles[i], cubeVertices); //*******************************
+            //**************************************************************************************************
+            }
+        }
+
     }
 
 
@@ -922,6 +983,9 @@
         pointDrawer = new PointDrawer();
         meshDrawer  = new MeshDrawer();
         waterDrawer = new WaterDrawer();
+       // massSpring =  new MassSpring();
+       // waterDrawer.setMassSpring(massSpring);
+        //console.log("WaterDrawer.massSpring: " + waterDrawer.massSpring);
        // console.log("MASS_SPRING:" + massSpring);
         
         //INIT PARTICLES
@@ -946,9 +1010,9 @@
         if (waterDrawer.isRunning){
             waterDrawer.simulate();
             //waterDrawer.draw(MVP);
-            if (waterDrawer.massSpring != null)
+            //if (waterDrawer.massSpring != null)
                 //console.log("PROVA: " + waterDrawer.massSpring.pos[0].unit());
-                console.log("");
+            //    console.log("");
             //console.log("NODES: " + massSpring.nodes[0]);
             requestAnimationFrame(startWaterSimulation);
             DrawScene();
@@ -1486,6 +1550,7 @@
             SimTimeStep( dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution );
             //console.log("PROVA: " + massSpring.mass)
             waterDrawer.setMassSpring(massSpring);
+           // console.log("POSIZIONE: " + waterDrawer.massSpring.pos[0].z);
            // console.log("PROVA: " + waterDrawer.massSpring);
             
             // make sure that the selected vertex does not change position
@@ -1613,6 +1678,7 @@
     
     window.onload = function() {
         showBox = document.getElementById('show-box');
+       // massSpring = new MassSpring();
         InitWebGL();
         lightView = new LightView();
         canvas.zoom = function( s ) {
@@ -1668,7 +1734,10 @@
         }
         
         massSpring = new MassSpring();
-       // waterDrawer.setMassSpring(massSpring);
+
+
+
+        //waterDrawer.setMassSpring(massSpring);
         //console.log("NODES: " + massSpring.nodes); 
         //console.log("WATER: " + waterDrawer.massSpring);
         
