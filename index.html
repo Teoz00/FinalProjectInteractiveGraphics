@@ -267,15 +267,6 @@
             this.massSpring = massSpring;
         }
 
-      //  updateParticles() {
-          //  let pos = [];
-          //  for (let p of this.particles) {
-          //      pos.push(p.x, p.y, p.z);
-          //  }
-           // gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
-           // gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW); //TODO: fare il check poichè dava errori
-      //  }
-
         //I define my mesh sphere
         createSphereGeometry(latBands, longBands) {
             this.vertexData = [];
@@ -554,6 +545,41 @@
             }
         }
 
+        handleCollisionWithCube(particle, cubeVertices) {
+            // Loop over each face of the cube
+            for (let i = 0; i < cubeVertices.length; i += 3) {
+                const v0 = cubeVertices[i];
+                const v1 = cubeVertices[i + 1];
+                const v2 = cubeVertices[i + 2];
+
+                // Calculate face normal
+                const edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+                const edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+                const faceNormal = crossProduct(edge1, edge2);
+
+                // Calculate distance from particle to face plane
+                const particleToVertex = [
+                    particle.position[0] - v0[0],
+                    particle.position[1] - v0[1],
+                    particle.position[2] - v0[2],
+                ];
+
+                const distance = dotProduct(faceNormal, particleToVertex);
+                if (distance < 0) {  // The particle is inside the cube
+                    // Reflect particle's velocity
+                    const velocityDotNormal = dotProduct(faceNormal, particle.velocity);
+                    for (let j = 0; j < 3; j++) {
+                        particle.velocity[j] -= 2 * velocityDotNormal * faceNormal[j];
+                    }
+
+                    // Move particle outside the cube slightly
+                    for (let j = 0; j < 3; j++) {
+                        particle.position[j] -= distance * faceNormal[j];
+                    }
+                }
+            }
+        }
+        
         predictPositions() {
         for (let i = 0; i < this.particles.length; i++) {
             let pi = this.particles[i];
@@ -690,6 +716,11 @@
         //this.calculateLambdas();          // Passo 5: Calcolo dei lambda
         //this.correctPositions();          // Passo 6: Correzione delle posizioni
         //this.updatePositionsAndVelocities(); // Passo 7: Aggiornamento delle velocità e delle posizioni
+
+        let cubeVertices = this.massSpring.pos; // Assuming the massSpring has the updated cube vertices
+        for (let i = 0; i < this.particles.length; i++) {
+            this.handleCollisionWithCube(this.particles[i], cubeVertices);
+        }
     }
 
 
@@ -840,6 +871,19 @@
             0, 0, 1, 0,  // Terza colonna
             0, 0, 0, 1   // Quarta colonna
         ];
+    }
+
+    function crossProduct(v1, v2) {
+        return [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+    }
+
+    // This is a utility function to calculate the dot product of two vectors
+    function dotProduct(v1, v2) {
+        return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
     }
 
 //////////////////////////////////////////////////////////////////////
