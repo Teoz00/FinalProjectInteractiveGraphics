@@ -226,6 +226,9 @@
 
             this.textureUniform = gl.getUniformLocation(this.prog, 'u_texture');
             this.texCoordAttr = gl.getAttribLocation(this.prog, 'a_texCoord');
+            
+            this.refractiveIndexLocation = gl.getUniformLocation(this.prog, 'refractiveIndex');
+
 
             this.createSphereGeometry(10, 10);  // Numero ridotto di latitudini e longitudini
             this.isRunning = false;
@@ -332,6 +335,9 @@
 
                 gl.bindTexture(gl.TEXTURE_2D, this.texture);
                 gl.uniform1i(this.textureUniform, 0); // Associa l'unità texture 0
+
+                gl.uniform1f(this.refractiveIndexLocation, 1.33);  // 1.33 for water
+
 
 
                 gl.bindBuffer(gl.ARRAY_BUFFER, this.sphereBuffer);
@@ -859,45 +865,60 @@
         }
     `;
 
+    // Fresnel effect and Snell's Law.
     var waterFS = `
         precision mediump float;
-        uniform sampler2D u_texture; // Sampler per la texture
-        uniform vec3 lightPos;  // Posizione della luce
-        uniform vec3 viewPos;   // Posizione della camera
+
+        uniform sampler2D u_texture;
+        uniform vec3 lightPos;
+        uniform vec3 viewPos;
         uniform vec3 lightColor;
         uniform vec3 objectColor;
-       
+        uniform float refractiveIndex; // New uniform for the material's refractive index
+
         varying vec3 v_normal;
-        varying vec2 v_texCoord;     // Coordinate della texture
+        varying vec2 v_texCoord;
         varying vec3 v_fragPos;
-        void main()
-        {
-            // Normale
+
+        void main() {
+            // Normals and lighting setup
             vec3 normal = normalize(v_normal);
-            
-            // Calcolo dell'illuminazione ambientale
-            float ambientStrength = 0.1;
-            vec3 ambient = ambientStrength * lightColor;
-            
-
-            // Calcolo dell'illuminazione diffusa
             vec3 lightDir = normalize(lightPos - v_fragPos);
-            float diff = max(dot(normal, lightDir), 0.0);
-            vec3 diffuse = diff * lightColor;
-
-             // Calcolo dell'illuminazione speculare
-            float specularStrength = 0.5;
             vec3 viewDir = normalize(viewPos - v_fragPos);
+
+            // Reflection vector
             vec3 reflectDir = reflect(-lightDir, normal);
-            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-            vec3 specular = specularStrength * spec * lightColor;
 
-             // Colore finale
-            vec3 result = (ambient + diffuse + specular) * objectColor;
+            // Refraction calculation using Snell's law
+            float n1 = 1.0; // Air refractive index
+            float n2 = refractiveIndex; // Water refractive index (e.g., 1.33)
+            float eta = n1 / n2;
+            float cosI = dot(-lightDir, normal);
+            float sinT2 = eta * eta * (1.0 - cosI * cosI);
+            vec3 refractDir;
+            if (sinT2 <= 1.0) {
+                refractDir = refract(-lightDir, normal, eta);
+            } else {
+                // Total internal reflection (fallback)
+                refractDir = reflect(-lightDir, normal);
+            }
 
-            vec4 texColor = texture2D(u_texture, v_texCoord); // Ottieni il colore dalla texture
-            gl_FragColor = vec4(result, 1.0) * texColor; // Usa il colore della texture per il frammento
+            // Fresnel effect (reflection vs refraction ratio)
+            float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0);
+
+            // Sample texture
+            vec3 textureColor = texture2D(u_texture, v_texCoord).rgb;
+
+            // Calculate final color (mix reflection and refraction)
+            vec3 reflectionColor = texture2D(u_texture, reflectDir.xy).rgb;
+            vec3 refractionColor = texture2D(u_texture, refractDir.xy).rgb;
+
+            // Apply the Fresnel effect to blend reflection and refraction
+            vec3 finalColor = mix(refractionColor, reflectionColor, fresnel);
+
+            gl_FragColor = vec4(finalColor * objectColor * lightColor, 1.0);
         }
+
     `;
 
 ///////////////////////CONSTANT VALUE/////////////////////////////////////// --> Somo inspiegabilmente gia presenti
