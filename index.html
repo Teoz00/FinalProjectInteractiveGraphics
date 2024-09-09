@@ -462,61 +462,7 @@
                     particle.velocity[i] = -particle.velocity[i] * 0.9 ;
                 }
             }
-           /* 
-            if (this.massSpring != null)  {
-                console.log("PROVA massSpring: " + this.massSpring.nodes[0]);
-            }
-
-            if (this.massSpring != null){
-                for (let i = 0; i < this.massSpring.nodes.length; i++) { //TODO: Problema, parte con lunghezza 0
-                    //console.log("PROVA: " + this.massSpring);
-                    let node = this.massSpring.nodes[i];
-                    let dist = this.squaredDistance(particle.position, node.position);
-
-                    let someThreshold = 0.25;
-                    if (dist < someThreshold) {  // Definisci una soglia adeguata per la collisione
-                        // Calcola la forza da applicare sulla particella d'acqua
-                        let force = this.calculateCollisionForce(particle, node);
-
-                        // Applica una forza opposta al nodo del cubo elastico
-                        this.massSpring.applyForceToNode(i, force.negate()); //TODO: al posto di negate metto - 
-
-                        // Modifica la velocità della particella
-                        particle.velocity[0] += force.x / particle.density;
-                        particle.velocity[1] += force.y / particle.density;
-                        particle.velocity[2] += force.z / particle.density;
-                    }
-                }
-            }*/
         }
-/*
-        calculateCollisionForce(particle, node) {
-            // Calcola la forza di collisione basata sulla differenza di velocità e posizione
-            // Puoi usare una formula simile a quella del kernel di viscosità
-            let relativeVelocity = [
-                node.velocity.x - particle.velocity[0],
-                node.velocity.y - particle.velocity[1],
-                node.velocity.z - particle.velocity[2],
-            ];
-
-            let relativePosition = [
-                node.position.x - particle.position[0],
-                node.position.y - particle.position[1],
-                node.position.z - particle.position[2],
-            ];
-
-            let someThreshold = 0.25; 
-            let distance = Math.sqrt(this.squaredDistance(particle.position, node.position));
-            let forceMagnitude = this.massSpring.stiffness * (someThreshold - distance);
-            let force = [
-                relativePosition[0] * forceMagnitude + relativeVelocity[0] * this.massSpring.damping,
-                relativePosition[1] * forceMagnitude + relativeVelocity[1] * this.massSpring.damping,
-                relativePosition[2] * forceMagnitude + relativeVelocity[2] * this.massSpring.damping,
-            ];
-
-            return new Vec3(force[0], force[1], force[2]);
-        }
-*/
 
         handleParticleCollisions() {
             const grid = new Grid3D(0.06); // Due volte il raggio delle particelle
@@ -577,20 +523,16 @@
         }
 
         handleCollisionWithCube(particle, cubeVertices) {
-
-              // First, define the axis-aligned bounding box (AABB) for the cube
             const minBound = [-1, -1, -1];
             const maxBound = [1, 1, 1];
 
-            // Check if the particle is inside the AABB of the cube
+            //BOUNDARY
             if (particle.position[0] < minBound[0] || particle.position[0] > maxBound[0] ||
                 particle.position[1] < minBound[1] || particle.position[1] > maxBound[1] ||
                 particle.position[2] < minBound[2] || particle.position[2] > maxBound[2]) {
-                // If the particle is outside the cube's bounding box, no need to check further
                 return;
             }
 
-            // Predefined indices for the vertices of each face of the cube
             const faceIndices = [
                 [0, 1, 2], [0, 2, 3], // Front face
                 [4, 5, 6], [4, 6, 7], // Back face
@@ -600,25 +542,15 @@
                 [1, 2, 6], [1, 6, 5]  // Right face
             ];
 
-            // Loop over each face of the cube
             for (let i = 0; i < faceIndices.length; i++) {
                 const v0 = cubeVertices[faceIndices[i][0]];
                 const v1 = cubeVertices[faceIndices[i][1]];
                 const v2 = cubeVertices[faceIndices[i][2]];
 
-                // Calculate face normal
                 const edge1 = [v1.x - v0.x, v1.y - v0.y, v1.z - v0.z];
                 const edge2 = [v2.x - v0.x, v2.y - v0.y, v2.z - v0.z];
                 const faceNormal = normalize(crossProduct(edge1, edge2));
 
-                //TODO: FARE IL CHECK DI QUESTA PARTE
-             //   const magnitude = Math.sqrt(dotProduct(faceNormal, faceNormal));
-               // for (let j = 0; j < 3; j++) {
-               //     faceNormal[j] /= magnitude;  // Normalize the normal
-               // }
-                ///////////
-
-                // Calculate distance from particle to face plane
                 const particleToVertex = [
                     particle.position[0] - v0.x,
                     particle.position[1] - v0.y,
@@ -626,21 +558,20 @@
                 ];
 
                 const distance = dotProduct(faceNormal, particleToVertex);
-                //console.log("DISTANCE --> " + distance);
-                //TODO: HANDLE COLLISION WITH EXTERNAL CUBE, NOT ONLY FOR THE FLOOR 
-                if (distance < 0) {  // The particle is inside the cube
-                    // Reflect particle's velocity
-                   // console.log("HI IM HERE");
-                    const velocityDotNormal = dotProduct(faceNormal, particle.velocity);
-                    
-                    for (let j = 0; j < 3; j++) {
-                        particle.velocity[j] -= 2 * velocityDotNormal * faceNormal[j];
-                    }
 
-                    // Move particle outside the cube slightly
-                    const moveOutFactor = 0.0001; //Inserisco questa variabile per gestirmi meglio le collissioni con il cubo
-                    for (let j = 0; j < 3; j++) {
-                        particle.position[j] -= distance * faceNormal[j] * moveOutFactor;
+                if (distance < 0) {
+                    // Check if particle is within the triangle
+                    if (isPointInTriangle(particle.position, v0, v1, v2)) {
+                        const velocityDotNormal = dotProduct(faceNormal, particle.velocity);
+                        const restitution = 0.1;  
+                        for (let j = 0; j < 3; j++) {
+                            particle.velocity[j] -= 2 * velocityDotNormal * faceNormal[j] * restitution;
+                        }
+
+                        const moveOutFactor = 0.01;
+                        for (let j = 0; j < 3; j++) {
+                            particle.position[j] += distance * faceNormal[j] * moveOutFactor;
+                        }
                     }
                 }
             }
@@ -804,7 +735,7 @@
             for (let i = 0; i < this.particles.length; i++) {
                // console.log("HI I M HERE" + cubeVertices[8]);
             //*********COMMENTARE QUI PER RIMUOVERE L'INTERAZIONE CON IL CUBO, POTREBBE AVERE PROBLEMI CAUSA PC*
-              //  this.handleCollisionWithCube(this.particles[i], cubeVertices); //*******************************
+                this.handleCollisionWithCube(this.particles[i], cubeVertices); //*******************************
             //**************************************************************************************************
             }
         }
@@ -869,8 +800,8 @@
         varying vec3 v_fragPos; // Posizione del frammento per il calcolo della luce
         void main()
         {
-            v_normal = normalize((model * vec4(pos, 0.0)).xyz); // Calcola la normale
-            v_fragPos = (model * vec4(pos, 1.0)).xyz; // Posizione del frammento
+            v_normal = normalize((model * vec4(pos, 0.0)).xyz); 
+            v_fragPos = (model * vec4(pos, 1.0)).xyz; 
             gl_Position = mvp * vec4(pos, 1.0);
 
             v_texCoord = a_texCoord;
@@ -886,23 +817,23 @@
         uniform vec3 viewPos;
         uniform vec3 lightColor;
         uniform vec3 objectColor;
-        uniform float refractiveIndex; // New uniform for the material's refractive index
+        uniform float refractiveIndex; 
 
         varying vec3 v_normal;
         varying vec2 v_texCoord;
         varying vec3 v_fragPos;
 
         void main() {
-            // Normals and lighting setup
+            // Normalize the normal vector and calculate lighting directions
             vec3 normal = normalize(v_normal);
             vec3 lightDir = normalize(lightPos - v_fragPos);
             vec3 viewDir = normalize(viewPos - v_fragPos);
 
-            // Reflection vector
+            // Reflection and refraction calculations
             vec3 reflectDir = reflect(-lightDir, normal);
 
-            // Refraction calculation using Snell's law
-            float n1 = 1.0; // Air refractive index
+            // Refraction using Snell's law
+            float n1 = 1.0;  // Air refractive index
             float n2 = refractiveIndex; // Water refractive index (e.g., 1.33)
             float eta = n1 / n2;
             float cosI = dot(-lightDir, normal);
@@ -911,27 +842,28 @@
             if (sinT2 <= 1.0) {
                 refractDir = refract(-lightDir, normal, eta);
             } else {
-                // Total internal reflection (fallback)
+                // Total internal reflection fallback
                 refractDir = reflect(-lightDir, normal);
             }
 
-            // Fresnel effect (reflection vs refraction ratio)
+            // Fresnel effect to blend reflection and refraction based on view angle
             float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.0);
 
             // Sample texture
             vec3 textureColor = texture2D(u_texture, v_texCoord).rgb;
 
-            // Calculate final color (mix reflection and refraction)
-            vec3 reflectionColor = texture2D(u_texture, reflectDir.xy).rgb;
-            vec3 refractionColor = texture2D(u_texture, refractDir.xy).rgb;
+            // Apply Fresnel effect to combine reflection and refraction
+            vec3 reflectionColor = texture2D(u_texture, reflectDir.xy).rgb;  
+            vec3 refractionColor = texture2D(u_texture, v_texCoord).rgb;     
 
-            // Apply the Fresnel effect to blend reflection and refraction
+            // Mix reflection and refraction using Fresnel factor
             vec3 finalColor = mix(refractionColor, reflectionColor, fresnel);
 
+            // Output final color
             gl_FragColor = vec4(finalColor * objectColor * lightColor, 1.0);
         }
-
     `;
+
 
 ///////////////////////CONSTANT VALUE/////////////////////////////////////// --> Somo inspiegabilmente gia presenti
     const H = 0.03;               // Raggio di influenza (kernel support radius)
@@ -958,6 +890,25 @@
             0, 0, 1, 0,
             x, y, z, 1
         ];
+    }
+
+    // Helper function to check if a point is inside a triangle
+    function isPointInTriangle(point, v0, v1, v2) {
+        const v0v1 = [v1.x - v0.x, v1.y - v0.y, v1.z - v0.z];
+        const v0v2 = [v2.x - v0.x, v2.y - v0.y, v2.z - v0.z];
+        const v0p = [point[0] - v0.x, point[1] - v0.y, point[2] - v0.z];
+
+        const dot00 = dotProduct(v0v1, v0v1);
+        const dot01 = dotProduct(v0v1, v0v2);
+        const dot02 = dotProduct(v0v1, v0p);
+        const dot11 = dotProduct(v0v2, v0v2);
+        const dot12 = dotProduct(v0v2, v0p);
+
+        const invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+        const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+        const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+        return (u >= 0) && (v >= 0) && (u + v <= 1);
     }
 
     function MatrixMult(a, b) {
