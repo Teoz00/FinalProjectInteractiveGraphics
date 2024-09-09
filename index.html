@@ -235,7 +235,7 @@
             this.innerCubeBounds = {min: {x: -0.5, y: -0.5, z: -0.5}, max: {x: 0.5, y: 0.5, z: 0.5}};  // Limiti del cubo interno
             this.massSpring;
             this.GRAVITY = [0, -9.81, 0] //I modify those constant in the other part of code (variable value) 
-            this.MASS = 0.02;
+            this.MASS = 0.2;
             this.TIME_STEP = 0.035; 
             this.texture = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -374,9 +374,14 @@
                     let r2 = this.squaredDistance(pi.position, pj.position);
                     if (r2 < H * H) {
                         pi.density += this.MASS * this.poly6Kernel(r2);
+                      //  console.log("RAGGIO" + r2);
+                        //console.log("DENSITA: " + pi.density);
                     }
                 }
+                //console.log("DENSITA:" + pi.density);
                 pi.pressure = GAS_CONST * (pi.density - REST_DENSITY);
+               // console.log("PRESSIONE: " + pi.pressure);
+                //console.log("MASS" + this.MASS)
             }
         }
 
@@ -388,6 +393,7 @@
                 for (let j = 0; j < this.particles.length; j++) {
                     if (i !== j) {
                         let pj = this.particles[j];
+                        //console.log("P1" + pi.position[0] + "P2" + pj.position[0]);
                         let r2 = this.squaredDistance(pi.position, pj.position);
                         //console.log("PARTICLE DISTANCES :" + r2); 
                         if (r2 < H * H) {
@@ -395,9 +401,9 @@
 
                             // Forza di pressione
                             let pressureForce = this.pressureKernelGradient(pi, pj, r);
-                            pi.force[0] -= pressureForce[0];
-                            pi.force[1] -= pressureForce[1];
-                            pi.force[2] -= pressureForce[2];
+                            pi.force[0] -= pressureForce[0] * 0.000003;
+                            pi.force[1] -= pressureForce[1] * 0.000001;
+                            pi.force[2] -= pressureForce[2] * 0.000003;
 
                             // Forza di viscosità
                             let viscosityForce = this.viscosityKernelLaplacian(pi, pj, r);
@@ -409,10 +415,11 @@
                             const repulsionStrength = 100.0; // Puoi regolare questa costante per cambiare la forza di repulsione
                             if (r < H * 0.9) {  // Applica la repulsione solo se le particelle sono molto vicine
                                 let repulsionForce = (H - r) * repulsionStrength / r;
-
+                               // console.log("CIAO A TUTTI SONO DENTRO");
                                 pi.force[0] += repulsionForce * (pi.position[0] - pj.position[0]);
                                 pi.force[1] += repulsionForce * (pi.position[1] - pj.position[1]);
                                 pi.force[2] += repulsionForce * (pi.position[2] - pj.position[2]);
+                                //console.log("F1: " +pi.force[0]  + " F2: " + pi.force[1]  + " F3: " + pi.force[2]);
                             }
                         }
                     }
@@ -797,7 +804,7 @@
             for (let i = 0; i < this.particles.length; i++) {
                // console.log("HI I M HERE" + cubeVertices[8]);
             //*********COMMENTARE QUI PER RIMUOVERE L'INTERAZIONE CON IL CUBO, POTREBBE AVERE PROBLEMI CAUSA PC*
-                this.handleCollisionWithCube(this.particles[i], cubeVertices); //*******************************
+              //  this.handleCollisionWithCube(this.particles[i], cubeVertices); //*******************************
             //**************************************************************************************************
             }
         }
@@ -813,8 +820,13 @@
         // Kernel poly6
         poly6Kernel(r2) {
             let h2 = H * H;
-            return 315 / (64 * Math.PI * h2 ** 3) * (h2 - r2) ** 3;
+            if (r2 >= 0 && r2 <= h2) {
+                return (315 / (64 * Math.PI * Math.pow(H, 9))) * Math.pow(h2 - r2, 3);
+            } else {
+                return 0;  // Kernel should return 0 when distance exceeds smoothing radius
+            }
         }
+
 
         // Kernel gradiente della pressione
         pressureKernelGradient(pi, pj, r) {
@@ -922,7 +934,7 @@
     `;
 
 ///////////////////////CONSTANT VALUE/////////////////////////////////////// --> Somo inspiegabilmente gia presenti
-    const H = 0.01;               // Raggio di influenza (kernel support radius)
+    const H = 0.03;               // Raggio di influenza (kernel support radius)
     const REST_DENSITY = 1000;   // Densità di riposo del fluido
     const GAS_CONST = 2000;      // Costante del gas per la pressione
     const VISCOSITY = 0.1;       // Viscosità del fluido
@@ -1857,7 +1869,7 @@
         var s = v / 200;
         document.getElementById('mass-value').innerText = s.toFixed( 3 );
         massSpring.mass = s;
-        waterDrawer.MASS = s * 0.01; 
+        waterDrawer.MASS = s * 0.0064; //Old value 6390
     }
     
     function SetStiffness( param )
